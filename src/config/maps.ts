@@ -1,4 +1,4 @@
-import type { MapConfig, MapLayer } from '../types';
+import type { MapConfig } from '../types';
 
 interface RawMapConfig {
   mapID: string[];
@@ -26,7 +26,7 @@ export async function loadMapConfig(mapId: string): Promise<MapConfig | null> {
   }
 
   // Return existing loading promise
-  if (loadingPromises[normalizedId]) {
+  if (normalizedId in loadingPromises) {
     return loadingPromises[normalizedId];
   }
 

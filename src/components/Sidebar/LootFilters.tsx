@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRadarStore } from '../../store/radarStore';
-import { DEFAULT_LOOT_COLORS, type LootColors } from '../../types';
+import type { LootColors } from '../../types';
 
 // Color picker component
 function ColorPicker({
