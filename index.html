@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Radar</title>
+    <script src="https://unpkg.com/@msgpack/msgpack@3.0.0-beta2/dist.es5+umd/msgpack.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #header {
+            background: #16213e;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #0f3460;
+        }
+        #header h1 {
+            font-size: 1.2rem;
+            color: #e94560;
+        }
+        #status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+        #status-dot.connected { background: #4ade80; }
+        #status-dot.connecting { background: #fbbf24; animation: pulse 1s infinite; }
+        #status-dot.error { background: #ef4444; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        #container {
+            flex: 1;
+            display: flex;
+            position: relative;
+        }
+        #radar-canvas {
+            flex: 1;
+            background: #0f0f23;
+        }
+        #sidebar {
+            width: 250px;
+            background: #16213e;
+            padding: 15px;
+            border-left: 1px solid #0f3460;
+            overflow-y: auto;
+        }
+        #sidebar h3 {
+            color: #e94560;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+        .player-list {
+            list-style: none;
+        }
+        .player-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .player-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .player-bot { background: #22223350; }
+        .player-bot .player-dot { background: #fbbf24; }
+        .player-pmc { background: #ef444450; }
+        .player-pmc .player-dot { background: #ef4444; }
+        .player-scav { background: #f9731650; }
+        .player-scav .player-dot { background: #f97316; }
+        .player-teammate { background: #22c55e50; }
+        .player-teammate .player-dot { background: #22c55e; }
+        .player-local { background: #3b82f650; }
+        .player-local .player-dot { background: #3b82f6; }
+        .player-dead { opacity: 0.4; }
+        #map-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 4px;
+        }
+        #controls {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #0f3460;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .control-row label {
+            font-size: 0.85rem;
+        }
+        .control-row input[type="range"] {
+            width: 100px;
+        }
+        #connect-form {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #16213e;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid #0f3460;
+            z-index: 100;
+            min-width: 400px;
+        }
+        #connect-form h2 {
+            color: #e94560;
+            margin-bottom: 20px;
+        }
+        #connect-form .form-group {
+            margin-bottom: 15px;
+        }
+        #connect-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+        }
+        #connect-form input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 1rem;
+        }
+        #connect-form input:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+        #connect-form button {
+            width: 100%;
+            padding: 12px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #connect-form button:hover {
+            background: #d63d56;
+        }
+        #connect-form .error {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+        .hidden { display: none !important; }
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 99;
+        }
+        #waiting-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 50;
+        }
+        #waiting-message h2 {
+            color: #fbbf24;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay"></div>
+    <div id="connect-form">
+        <h2>Connect to Radar</h2>
+        <div class="form-group">
+            <label for="relay-url">Relay Server URL</label>
+            <input type="text" id="relay-url" placeholder="wss://your-relay.onrender.com" />
+        </div>
+        <div class="form-group">
+            <label for="room-id">Room ID / Password</label>
+            <input type="text" id="room-id" placeholder="Enter the room ID shared by host" />
+        </div>
+        <button id="connect-btn">Connect</button>
+        <div id="form-error" class="error hidden"></div>
+    </div>
+
+    <div id="waiting-message" class="hidden">
+        <h2>Waiting for host...</h2>
+        <p>The radar host hasn't connected yet. Please wait.</p>
+    </div>
+
+    <header id="header">
+        <h1>Web Radar</h1>
+        <div id="status">
+            <div id="status-dot"></div>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </header>
+
+    <div id="container">
+        <canvas id="radar-canvas"></canvas>
+        <aside id="sidebar">
+            <div id="map-info">
+                <strong>Map:</strong> <span id="map-name">-</span>
+            </div>
+            <h3>Players</h3>
+            <ul id="player-list" class="player-list"></ul>
+            <div id="controls">
+                <h3>Controls</h3>
+                <div class="control-row">
+                    <label>Zoom</label>
+                    <input type="range" id="zoom" min="0.5" max="3" step="0.1" value="1" />
+                </div>
+                <div class="control-row">
+                    <label>Center on Local</label>
+                    <input type="checkbox" id="center-local" checked />
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // Radar state
+        let ws = null;
+        let radarData = null;
+        let zoom = 1;
+        let centerOnLocal = true;
+        let panOffset = { x: 0, y: 0 };
+        let isDragging = false;
+        let lastMouse = { x: 0, y: 0 };
+
+        // Player type colors and names
+        const PLAYER_TYPES = {
+            0: { name: 'Bot', color: '#fbbf24', class: 'player-bot' },
+            1: { name: 'You', color: '#3b82f6', class: 'player-local' },
+            2: { name: 'Teammate', color: '#22c55e', class: 'player-teammate' },
+            3: { name: 'PMC', color: '#ef4444', class: 'player-pmc' },
+            4: { name: 'Player Scav', color: '#f97316', class: 'player-scav' }
+        };
+
+        // DOM elements
+        const canvas = document.getElementById('radar-canvas');
+        const ctx = canvas.getContext('2d');
+        const connectForm = document.getElementById('connect-form');
+        const overlay = document.getElementById('overlay');
+        const waitingMessage = document.getElementById('waiting-message');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const mapName = document.getElementById('map-name');
+        const playerList = document.getElementById('player-list');
+
+        // Check URL params for auto-connect
+        const urlParams = new URLSearchParams(window.location.search);
+        const relayParam = urlParams.get('relay');
+        const roomParam = urlParams.get('room');
+
+        if (relayParam && roomParam) {
+            document.getElementById('relay-url').value = relayParam;
+            document.getElementById('room-id').value = roomParam;
+        }
+
+        // Connect button handler
+        document.getElementById('connect-btn').addEventListener('click', connect);
+
+        function setStatus(status, text) {
+            statusDot.className = '';
+            statusDot.classList.add(status);
+            statusText.textContent = text;
+        }
+
+        function connect() {
+            const relayUrl = document.getElementById('relay-url').value.trim();
+            const roomId = document.getElementById('room-id').value.trim();
+            const errorEl = document.getElementById('form-error');
+
+            if (!relayUrl || !roomId) {
+                errorEl.textContent = 'Please enter both relay URL and room ID';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            errorEl.classList.add('hidden');
+            setStatus('connecting', 'Connecting...');
+
+            // Build WebSocket URL
+            let wsUrl = relayUrl;
+            if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+                wsUrl = 'wss://' + wsUrl;
+            }
+            if (!wsUrl.includes('?')) {
+                wsUrl += '?';
+            } else {
+                wsUrl += '&';
+            }
+            wsUrl += `role=viewer&room=${encodeURIComponent(roomId)}`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+                ws.binaryType = 'arraybuffer';
+
+                ws.onopen = () => {
+                    console.log('Connected to relay');
+                    connectForm.classList.add('hidden');
+                    overlay.classList.add('hidden');
+                    waitingMessage.classList.remove('hidden');
+                    setStatus('connecting', 'Connected, waiting for host...');
+                };
+
+                ws.onmessage = (event) => {
+                    if (typeof event.data === 'string') {
+                        // JSON control message
+                        try {
+                            const msg = JSON.parse(event.data);
+                            if (msg.type === 'host_connected') {
+                                waitingMessage.classList.add('hidden');
+                                setStatus('connected', 'Connected');
+                            } else if (msg.type === 'host_disconnected') {
+                                waitingMessage.classList.remove('hidden');
+                                setStatus('connecting', 'Host disconnected');
+                                radarData = null;
+                            } else if (msg.type === 'waiting_for_host') {
+                                waitingMessage.classList.remove('hidden');
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse control message:', e);
+                        }
+                    } else {
+                        // Binary MessagePack data
+                        try {
+                            waitingMessage.classList.add('hidden');
+                            setStatus('connected', 'Connected');
+                            const data = MessagePack.decode(new Uint8Array(event.data));
+                            handleRadarUpdate(data);
+                        } catch (e) {
+                            console.error('Failed to decode radar data:', e);
+                        }
+                    }
+                };
+
+                ws.onclose = (event) => {
+                    console.log('Disconnected from relay:', event.code, event.reason);
+                    setStatus('error', 'Disconnected');
+                    radarData = null;
+
+                    // Show reconnect form after a delay
+                    setTimeout(() => {
+                        overlay.classList.remove('hidden');
+                        connectForm.classList.remove('hidden');
+                        waitingMessage.classList.add('hidden');
+                        errorEl.textContent = 'Connection closed. Please reconnect.';
+                        errorEl.classList.remove('hidden');
+                    }, 1000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    setStatus('error', 'Connection error');
+                    errorEl.textContent = 'Connection failed. Check the relay URL and try again.';
+                    errorEl.classList.remove('hidden');
+                };
+            } catch (e) {
+                errorEl.textContent = 'Invalid URL: ' + e.message;
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function handleRadarUpdate(data) {
+            // Data format: [Version, InGame, MapID, Players]
+            // Player format: [Name, Type, IsActive, IsAlive, Position[x,y,z], Rotation[x,y]]
+            radarData = {
+                version: data[0],
+                inGame: data[1],
+                mapId: data[2],
+                players: data[3] ? data[3].map(p => ({
+                    name: p[0],
+                    type: p[1],
+                    isActive: p[2],
+                    isAlive: p[3],
+                    position: { x: p[4][0], y: p[4][1], z: p[4][2] },
+                    rotation: { x: p[5][0], y: p[5][1] }
+                })) : []
+            };
+
+            mapName.textContent = radarData.inGame ? (radarData.mapId || 'Unknown') : 'Not in raid';
+            updatePlayerList();
+        }
+
+        function updatePlayerList() {
+            if (!radarData || !radarData.players) {
+                playerList.innerHTML = '<li style="color: #666;">No players</li>';
+                return;
+            }
+
+            // Sort: LocalPlayer first, then teammates, then by type
+            const sorted = [...radarData.players].sort((a, b) => {
+                if (a.type === 1) return -1;
+                if (b.type === 1) return 1;
+                if (a.type === 2 && b.type !== 2) return -1;
+                if (b.type === 2 && a.type !== 2) return 1;
+                return a.type - b.type;
+            });
+
+            playerList.innerHTML = sorted.map(p => {
+                const typeInfo = PLAYER_TYPES[p.type] || PLAYER_TYPES[0];
+                const deadClass = p.isAlive ? '' : 'player-dead';
+                return `<li class="player-item ${typeInfo.class} ${deadClass}">
+                    <span class="player-dot"></span>
+                    <span>${p.name}${!p.isAlive ? ' (Dead)' : ''}</span>
+                </li>`;
+            }).join('');
+        }
+
+        // Canvas setup
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Canvas controls
+        document.getElementById('zoom').addEventListener('input', (e) => {
+            zoom = parseFloat(e.target.value);
+        });
+        document.getElementById('center-local').addEventListener('change', (e) => {
+            centerOnLocal = e.target.checked;
+            if (centerOnLocal) {
+                panOffset = { x: 0, y: 0 };
+            }
+        });
+
+        // Mouse controls for panning
+        canvas.addEventListener('mousedown', (e) => {
+            if (!centerOnLocal) {
+                isDragging = true;
+                lastMouse = { x: e.clientX, y: e.clientY };
+            }
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                panOffset.x += e.clientX - lastMouse.x;
+                panOffset.y += e.clientY - lastMouse.y;
+                lastMouse = { x: e.clientX, y: e.clientY };
+            }
+        });
+        canvas.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('mouseleave', () => isDragging = false);
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom = Math.max(0.5, Math.min(3, zoom - e.deltaY * 0.001));
+            document.getElementById('zoom').value = zoom;
+        });
+
+        // Render loop
+        function render() {
+            ctx.fillStyle = '#0f0f23';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!radarData || !radarData.inGame || !radarData.players || radarData.players.length === 0) {
+                ctx.fillStyle = '#666';
+                ctx.font = '20px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText(radarData ? 'Not in raid' : 'Waiting for data...', canvas.width / 2, canvas.height / 2);
+                requestAnimationFrame(render);
+                return;
+            }
+
+            // Find local player for centering
+            const localPlayer = radarData.players.find(p => p.type === 1);
+
+            // Calculate center point
+            let centerX = canvas.width / 2;
+            let centerY = canvas.height / 2;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            if (centerOnLocal && localPlayer) {
+                offsetX = localPlayer.position.x;
+                offsetY = localPlayer.position.z; // Use Z for top-down view
+            } else {
+                centerX += panOffset.x;
+                centerY += panOffset.y;
+            }
+
+            // Draw grid
+            ctx.strokeStyle = '#1a1a3a';
+            ctx.lineWidth = 1;
+            const gridSize = 50 * zoom;
+            for (let x = centerX % gridSize; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = centerY % gridSize; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Draw players
+            for (const player of radarData.players) {
+                if (!player.isActive && player.type !== 1) continue;
+
+                const typeInfo = PLAYER_TYPES[player.type] || PLAYER_TYPES[0];
+
+                // Convert world position to screen position
+                const screenX = centerX + (player.position.x - offsetX) * zoom;
+                const screenY = centerY + (player.position.z - offsetY) * zoom; // Z is forward in Unity
+
+                // Skip if off-screen
+                if (screenX < -50 || screenX > canvas.width + 50 ||
+                    screenY < -50 || screenY > canvas.height + 50) continue;
+
+                // Draw aim line
+                if (player.isAlive) {
+                    const aimLength = player.type === 1 ? 80 : 40;
+                    const aimRad = (player.rotation.x - 90) * Math.PI / 180; // Convert to radians
+                    const aimEndX = screenX + Math.cos(aimRad) * aimLength * zoom;
+                    const aimEndY = screenY + Math.sin(aimRad) * aimLength * zoom;
+
+                    ctx.strokeStyle = typeInfo.color + '80';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(screenX, screenY);
+                    ctx.lineTo(aimEndX, aimEndY);
+                    ctx.stroke();
+                }
+
+                // Draw player dot
+                const radius = player.type === 1 ? 8 : 6;
+                ctx.fillStyle = player.isAlive ? typeInfo.color : '#666';
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, radius * (zoom > 1 ? 1 : zoom), 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw outline for local player
+                if (player.type === 1) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Draw name label
+                ctx.fillStyle = player.isAlive ? '#fff' : '#888';
+                ctx.font = `${Math.max(10, 12 * zoom)}px Segoe UI`;
+                ctx.textAlign = 'center';
+                ctx.fillText(player.name, screenX, screenY - radius * zoom - 5);
+
+                // Draw height indicator
+                const heightDiff = player.position.y - (localPlayer ? localPlayer.position.y : 0);
+                if (Math.abs(heightDiff) > 2) {
+                    ctx.fillStyle = heightDiff > 0 ? '#4ade80' : '#f87171';
+                    ctx.font = `${Math.max(8, 10 * zoom)}px Segoe UI`;
+                    const heightText = heightDiff > 0 ? `+${Math.round(heightDiff)}` : Math.round(heightDiff).toString();
+                    ctx.fillText(heightText, screenX, screenY + radius * zoom + 12);
+                }
+            }
+
+            // Draw compass
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('N', canvas.width / 2, 20);
+
+            requestAnimationFrame(render);
+        }
+
+        render();
+    </script>
+</body>
+</html>
