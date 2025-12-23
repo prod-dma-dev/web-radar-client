@@ -60,7 +60,7 @@
             background: #0f0f23;
         }
         #sidebar {
-            width: 250px;
+            width: 280px;
             background: #16213e;
             padding: 15px;
             border-left: 1px solid #0f3460;
@@ -76,18 +76,42 @@
             list-style: none;
         }
         .player-item {
-            padding: 8px;
+            padding: 8px 10px;
             margin-bottom: 5px;
             border-radius: 4px;
             font-size: 0.85rem;
             display: flex;
             align-items: center;
             gap: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 2px solid transparent;
+        }
+        .player-item:hover {
+            filter: brightness(1.2);
+        }
+        .player-item.selected {
+            border-color: #fff;
+            box-shadow: 0 0 8px rgba(255,255,255,0.3);
         }
         .player-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .player-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .player-pov-badge {
+            font-size: 0.7rem;
+            background: #e94560;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: white;
         }
         .player-bot { background: #22223350; }
         .player-bot .player-dot { background: #fbbf24; }
@@ -105,6 +129,15 @@
             padding: 10px;
             background: #0f3460;
             border-radius: 4px;
+        }
+        #pov-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 4px;
+        }
+        #pov-info strong {
+            color: #e94560;
         }
         #controls {
             margin-top: 15px;
@@ -201,6 +234,11 @@
             color: #fbbf24;
             margin-bottom: 10px;
         }
+        .hint {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -238,17 +276,17 @@
             <div id="map-info">
                 <strong>Map:</strong> <span id="map-name">-</span>
             </div>
-            <h3>Players</h3>
+            <div id="pov-info">
+                <strong>POV:</strong> <span id="pov-name">-</span>
+            </div>
+            <h3>Players <span style="font-weight: normal; font-size: 0.75rem;">(click to switch POV)</span></h3>
             <ul id="player-list" class="player-list"></ul>
+            <p class="hint">Click a player to center radar on them</p>
             <div id="controls">
                 <h3>Controls</h3>
                 <div class="control-row">
                     <label>Zoom</label>
                     <input type="range" id="zoom" min="0.5" max="3" step="0.1" value="1" />
-                </div>
-                <div class="control-row">
-                    <label>Center on Local</label>
-                    <input type="checkbox" id="center-local" checked />
                 </div>
             </div>
         </aside>
@@ -259,7 +297,7 @@
         let ws = null;
         let radarData = null;
         let zoom = 1;
-        let centerOnLocal = true;
+        let selectedPlayerName = null; // Name of player to center on (null = LocalPlayer)
         let panOffset = { x: 0, y: 0 };
         let isDragging = false;
         let lastMouse = { x: 0, y: 0 };
@@ -282,6 +320,7 @@
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const mapName = document.getElementById('map-name');
+        const povName = document.getElementById('pov-name');
         const playerList = document.getElementById('player-list');
 
         // Check URL params for auto-connect
@@ -418,6 +457,39 @@
 
             mapName.textContent = radarData.inGame ? (radarData.mapId || 'Unknown') : 'Not in raid';
             updatePlayerList();
+            updatePovDisplay();
+        }
+
+        function selectPlayer(name) {
+            selectedPlayerName = name;
+            panOffset = { x: 0, y: 0 };
+            updatePlayerList();
+            updatePovDisplay();
+        }
+
+        function getSelectedPlayer() {
+            if (!radarData || !radarData.players) return null;
+
+            // If a specific player is selected, find them
+            if (selectedPlayerName) {
+                const selected = radarData.players.find(p => p.name === selectedPlayerName);
+                if (selected) return selected;
+            }
+
+            // Default to LocalPlayer
+            return radarData.players.find(p => p.type === 1) || radarData.players[0];
+        }
+
+        function updatePovDisplay() {
+            const selected = getSelectedPlayer();
+            if (selected) {
+                const typeInfo = PLAYER_TYPES[selected.type] || PLAYER_TYPES[0];
+                povName.textContent = selected.name;
+                povName.style.color = typeInfo.color;
+            } else {
+                povName.textContent = '-';
+                povName.style.color = '';
+            }
         }
 
         function updatePlayerList() {
@@ -425,6 +497,9 @@
                 playerList.innerHTML = '<li style="color: #666;">No players</li>';
                 return;
             }
+
+            const selectedPlayer = getSelectedPlayer();
+            const selectedName = selectedPlayer ? selectedPlayer.name : null;
 
             // Sort: LocalPlayer first, then teammates, then by type
             const sorted = [...radarData.players].sort((a, b) => {
@@ -438,9 +513,12 @@
             playerList.innerHTML = sorted.map(p => {
                 const typeInfo = PLAYER_TYPES[p.type] || PLAYER_TYPES[0];
                 const deadClass = p.isAlive ? '' : 'player-dead';
-                return `<li class="player-item ${typeInfo.class} ${deadClass}">
+                const selectedClass = p.name === selectedName ? 'selected' : '';
+                const povBadge = p.name === selectedName ? '<span class="player-pov-badge">POV</span>' : '';
+                return `<li class="player-item ${typeInfo.class} ${deadClass} ${selectedClass}" onclick="selectPlayer('${p.name.replace(/'/g, "\\'")}')">
                     <span class="player-dot"></span>
-                    <span>${p.name}${!p.isAlive ? ' (Dead)' : ''}</span>
+                    <span class="player-name">${p.name}${!p.isAlive ? ' (Dead)' : ''}</span>
+                    ${povBadge}
                 </li>`;
             }).join('');
         }
@@ -457,19 +535,11 @@
         document.getElementById('zoom').addEventListener('input', (e) => {
             zoom = parseFloat(e.target.value);
         });
-        document.getElementById('center-local').addEventListener('change', (e) => {
-            centerOnLocal = e.target.checked;
-            if (centerOnLocal) {
-                panOffset = { x: 0, y: 0 };
-            }
-        });
 
         // Mouse controls for panning
         canvas.addEventListener('mousedown', (e) => {
-            if (!centerOnLocal) {
-                isDragging = true;
-                lastMouse = { x: e.clientX, y: e.clientY };
-            }
+            isDragging = true;
+            lastMouse = { x: e.clientX, y: e.clientY };
         });
         canvas.addEventListener('mousemove', (e) => {
             if (isDragging) {
@@ -486,6 +556,11 @@
             document.getElementById('zoom').value = zoom;
         });
 
+        // Double-click to reset pan
+        canvas.addEventListener('dblclick', () => {
+            panOffset = { x: 0, y: 0 };
+        });
+
         // Render loop
         function render() {
             ctx.fillStyle = '#0f0f23';
@@ -500,45 +575,52 @@
                 return;
             }
 
-            // Find local player for centering
+            // Find the player to center on (POV player)
+            const povPlayer = getSelectedPlayer();
             const localPlayer = radarData.players.find(p => p.type === 1);
 
             // Calculate center point
-            let centerX = canvas.width / 2;
-            let centerY = canvas.height / 2;
+            let centerX = canvas.width / 2 + panOffset.x;
+            let centerY = canvas.height / 2 + panOffset.y;
             let offsetX = 0;
             let offsetY = 0;
 
-            if (centerOnLocal && localPlayer) {
-                offsetX = localPlayer.position.x;
-                offsetY = localPlayer.position.z; // Use Z for top-down view
-            } else {
-                centerX += panOffset.x;
-                centerY += panOffset.y;
+            if (povPlayer) {
+                offsetX = povPlayer.position.x;
+                offsetY = povPlayer.position.z; // Use Z for top-down view
             }
 
             // Draw grid
             ctx.strokeStyle = '#1a1a3a';
             ctx.lineWidth = 1;
             const gridSize = 50 * zoom;
-            for (let x = centerX % gridSize; x < canvas.width; x += gridSize) {
+            const gridOffsetX = (centerX - offsetX * zoom) % gridSize;
+            const gridOffsetY = (centerY - offsetY * zoom) % gridSize;
+            for (let x = gridOffsetX; x < canvas.width; x += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(x, 0);
                 ctx.lineTo(x, canvas.height);
                 ctx.stroke();
             }
-            for (let y = centerY % gridSize; y < canvas.height; y += gridSize) {
+            for (let y = gridOffsetY; y < canvas.height; y += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(canvas.width, y);
                 ctx.stroke();
             }
 
-            // Draw players
-            for (const player of radarData.players) {
+            // Draw players (draw POV player last so they're on top)
+            const playersToRender = [...radarData.players].sort((a, b) => {
+                if (povPlayer && a.name === povPlayer.name) return 1;
+                if (povPlayer && b.name === povPlayer.name) return -1;
+                return 0;
+            });
+
+            for (const player of playersToRender) {
                 if (!player.isActive && player.type !== 1) continue;
 
                 const typeInfo = PLAYER_TYPES[player.type] || PLAYER_TYPES[0];
+                const isPov = povPlayer && player.name === povPlayer.name;
 
                 // Convert world position to screen position
                 const screenX = centerX + (player.position.x - offsetX) * zoom;
@@ -550,13 +632,13 @@
 
                 // Draw aim line
                 if (player.isAlive) {
-                    const aimLength = player.type === 1 ? 80 : 40;
+                    const aimLength = isPov ? 100 : 40;
                     const aimRad = (player.rotation.x - 90) * Math.PI / 180; // Convert to radians
                     const aimEndX = screenX + Math.cos(aimRad) * aimLength * zoom;
                     const aimEndY = screenY + Math.sin(aimRad) * aimLength * zoom;
 
-                    ctx.strokeStyle = typeInfo.color + '80';
-                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = typeInfo.color + (isPov ? 'cc' : '80');
+                    ctx.lineWidth = isPov ? 3 : 2;
                     ctx.beginPath();
                     ctx.moveTo(screenX, screenY);
                     ctx.lineTo(aimEndX, aimEndY);
@@ -564,32 +646,35 @@
                 }
 
                 // Draw player dot
-                const radius = player.type === 1 ? 8 : 6;
+                const radius = isPov ? 10 : 6;
                 ctx.fillStyle = player.isAlive ? typeInfo.color : '#666';
                 ctx.beginPath();
                 ctx.arc(screenX, screenY, radius * (zoom > 1 ? 1 : zoom), 0, Math.PI * 2);
                 ctx.fill();
 
-                // Draw outline for local player
-                if (player.type === 1) {
+                // Draw outline for POV player
+                if (isPov) {
                     ctx.strokeStyle = '#fff';
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = 3;
                     ctx.stroke();
                 }
 
                 // Draw name label
                 ctx.fillStyle = player.isAlive ? '#fff' : '#888';
-                ctx.font = `${Math.max(10, 12 * zoom)}px Segoe UI`;
+                ctx.font = `${isPov ? 'bold ' : ''}${Math.max(10, 12 * zoom)}px Segoe UI`;
                 ctx.textAlign = 'center';
-                ctx.fillText(player.name, screenX, screenY - radius * zoom - 5);
+                ctx.fillText(player.name, screenX, screenY - radius * zoom - 8);
 
-                // Draw height indicator
-                const heightDiff = player.position.y - (localPlayer ? localPlayer.position.y : 0);
-                if (Math.abs(heightDiff) > 2) {
-                    ctx.fillStyle = heightDiff > 0 ? '#4ade80' : '#f87171';
-                    ctx.font = `${Math.max(8, 10 * zoom)}px Segoe UI`;
-                    const heightText = heightDiff > 0 ? `+${Math.round(heightDiff)}` : Math.round(heightDiff).toString();
-                    ctx.fillText(heightText, screenX, screenY + radius * zoom + 12);
+                // Draw height indicator (relative to POV player)
+                const refPlayer = povPlayer || localPlayer;
+                if (refPlayer) {
+                    const heightDiff = player.position.y - refPlayer.position.y;
+                    if (Math.abs(heightDiff) > 2) {
+                        ctx.fillStyle = heightDiff > 0 ? '#4ade80' : '#f87171';
+                        ctx.font = `${Math.max(8, 10 * zoom)}px Segoe UI`;
+                        const heightText = heightDiff > 0 ? `+${Math.round(heightDiff)}` : Math.round(heightDiff).toString();
+                        ctx.fillText(heightText, screenX, screenY + radius * zoom + 15);
+                    }
                 }
             }
 
@@ -598,6 +683,14 @@
             ctx.font = 'bold 14px Segoe UI';
             ctx.textAlign = 'center';
             ctx.fillText('N', canvas.width / 2, 20);
+
+            // Draw POV indicator
+            if (povPlayer) {
+                ctx.fillStyle = '#e94560';
+                ctx.font = '12px Segoe UI';
+                ctx.textAlign = 'left';
+                ctx.fillText(`POV: ${povPlayer.name}`, 10, canvas.height - 10);
+            }
 
             requestAnimationFrame(render);
         }
