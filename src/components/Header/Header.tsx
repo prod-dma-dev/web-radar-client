@@ -46,7 +46,7 @@ export function Header() {
   return (
     <header className="h-12 bg-radar-panel border-b border-radar-border flex items-center justify-between px-4">
       <div className="flex items-center gap-3">
-        <img src="/modal_branding.jpeg" alt="prods-gamesense" className="h-8 rounded" />
+        <img src={`${import.meta.env.BASE_URL}modal_branding.jpeg`} alt="prods-gamesense" className="h-8 rounded" />
         <h1 className="text-radar-accent font-bold text-lg">prods-gamesense</h1>
       </div>
 

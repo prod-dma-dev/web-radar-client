@@ -38,7 +38,7 @@ export function ConnectionModal({ isOpen, onClose }: Props) {
         playsInline
         className="absolute inset-0 w-full h-full object-cover"
       >
-        <source src="/bg-video.mp4" type="video/mp4" />
+        <source src={`${import.meta.env.BASE_URL}bg-video.mp4`} type="video/mp4" />
       </video>
 
       {/* Dark overlay for readability */}
@@ -48,7 +48,7 @@ export function ConnectionModal({ isOpen, onClose }: Props) {
         <div className="p-10">
           {/* Branding */}
           <div className="flex justify-center mb-8">
-            <img src="/modal_branding.jpeg" alt="prods-gamesense" className="h-32 rounded-lg" />
+            <img src={`${import.meta.env.BASE_URL}modal_branding.jpeg`} alt="prods-gamesense" className="h-32 rounded-lg" />
           </div>
 
           <h2 className="text-white text-2xl font-semibold mb-8 text-center">Connect to Radar</h2>

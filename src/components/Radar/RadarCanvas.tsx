@@ -102,7 +102,7 @@ export function RadarCanvas() {
 
       // Load all layers
       const loadLayer = async (layer: typeof config.layers[0], index: number) => {
-        const url = `/maps/${layer.filename}`;
+        const url = `${import.meta.env.BASE_URL}maps/${layer.filename}`;
         console.log(`Loading layer ${index}:`, layer.filename, 'height:', layer.minHeight, '-', layer.maxHeight);
 
         try {

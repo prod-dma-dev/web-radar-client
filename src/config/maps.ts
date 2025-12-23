@@ -52,7 +52,7 @@ export async function loadMapConfig(mapId: string): Promise<MapConfig | null> {
 
   loadingPromises[normalizedId] = (async () => {
     try {
-      const response = await fetch(`/maps/${jsonFilename}.json`);
+      const response = await fetch(`${import.meta.env.BASE_URL}maps/${jsonFilename}.json`);
       if (!response.ok) {
         console.error(`Failed to load map config: ${jsonFilename}.json`);
         return null;
