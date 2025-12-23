@@ -74,6 +74,8 @@
         }
         .player-list {
             list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
         }
         .player-item {
             padding: 8px 10px;
@@ -155,6 +157,13 @@
         }
         .control-row input[type="range"] {
             width: 100px;
+        }
+        .control-row select {
+            padding: 4px;
+            background: #1a1a2e;
+            color: #eee;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
         }
         #connect-form {
             position: fixed;
@@ -286,21 +295,168 @@
                 <h3>Controls</h3>
                 <div class="control-row">
                     <label>Zoom</label>
-                    <input type="range" id="zoom" min="0.5" max="3" step="0.1" value="1" />
+                    <input type="range" id="zoom" min="0.3" max="4" step="0.1" value="1" />
+                </div>
+                <div class="control-row">
+                    <label>Show Map</label>
+                    <input type="checkbox" id="show-map" checked />
+                </div>
+                <div class="control-row">
+                    <label>Map Opacity</label>
+                    <input type="range" id="map-opacity" min="0.1" max="1" step="0.1" value="0.8" />
                 </div>
             </div>
         </aside>
     </div>
 
     <script>
+        // Map configurations - embedded for offline use
+        const MAP_CONFIGS = {
+            'bigmap': {
+                name: 'Customs',
+                x: 369.40, y: 232.91, scale: 0.992, svgScale: 5.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Customs.svg' },
+                    { minHeight: null, maxHeight: -1.8, filename: 'Customs_-1f.svg' },
+                    { minHeight: -1.8, maxHeight: null, filename: 'Customs_1f.svg' },
+                    { minHeight: 1.82, maxHeight: null, filename: 'Customs_2f.svg' },
+                    { minHeight: 4.7, maxHeight: null, filename: 'Customs_3f.svg' }
+                ]
+            },
+            'factory4_day': {
+                name: 'Factory',
+                x: 64.9, y: 67, scale: 0.994, svgScale: 36.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Factory.svg' },
+                    { minHeight: null, maxHeight: -0.8, filename: 'Factory_-1f.svg' },
+                    { minHeight: 2.8, maxHeight: 6.5, filename: 'Factory_2f.svg' },
+                    { minHeight: 6.5, maxHeight: null, filename: 'Factory_3f.svg' }
+                ]
+            },
+            'factory4_night': {
+                name: 'Factory',
+                x: 64.9, y: 67, scale: 0.994, svgScale: 36.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Factory.svg' },
+                    { minHeight: null, maxHeight: -0.8, filename: 'Factory_-1f.svg' },
+                    { minHeight: 2.8, maxHeight: 6.5, filename: 'Factory_2f.svg' },
+                    { minHeight: 6.5, maxHeight: null, filename: 'Factory_3f.svg' }
+                ]
+            },
+            'interchange': {
+                name: 'Interchange',
+                x: 397, y: 494, scale: 1.09, svgScale: 5.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Interchange.svg' },
+                    { minHeight: 26, maxHeight: 31, filename: 'Interchange_1f.svg' },
+                    { minHeight: 31, maxHeight: null, filename: 'Interchange_2f.svg' }
+                ]
+            },
+            'laboratory': {
+                name: 'Labs',
+                x: 2356, y: -1841, scale: 8.3, svgScale: 2.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Labs_-1f.svg' },
+                    { minHeight: -1, maxHeight: null, filename: 'Labs_1f.svg' },
+                    { minHeight: 3, maxHeight: null, filename: 'Labs_2f.svg' }
+                ]
+            },
+            'shoreline': {
+                name: 'Shoreline',
+                x: 1096, y: 648, scale: 0.995, svgScale: 3.5,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Shoreline.svg' },
+                    { minHeight: null, maxHeight: -6, filename: 'Shoreline_-1f.svg' },
+                    { minHeight: -4, maxHeight: -2, filename: 'Shoreline_1f.svg' },
+                    { minHeight: -1, maxHeight: 1, filename: 'Shoreline_2f.svg' },
+                    { minHeight: 2, maxHeight: null, filename: 'Shoreline_3f.svg' }
+                ]
+            },
+            'woods': {
+                name: 'Woods',
+                x: 834.6, y: 469.6, scale: 1.048, svgScale: 4.5,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Woods.svg' }
+                ]
+            },
+            'rezervbase': {
+                name: 'Reserve',
+                x: 1810, y: 1613, scale: 5.99, svgScale: 1.5,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Reserve.svg' },
+                    { minHeight: null, maxHeight: -8, filename: 'Reserve_-1f.svg' }
+                ]
+            },
+            'lighthouse': {
+                name: 'Lighthouse',
+                x: 544, y: 721.5, scale: 1, svgScale: 3.5,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Lighthouse.svg' }
+                ]
+            },
+            'tarkovstreets': {
+                name: 'Streets',
+                x: 283, y: 534, scale: 1.0008, svgScale: 4.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Streets.svg' },
+                    { minHeight: null, maxHeight: -0.7, filename: 'Streets_-1f.svg' },
+                    { minHeight: -0.7, maxHeight: null, filename: 'Streets_1f.svg' },
+                    { minHeight: 4.5, maxHeight: 7, filename: 'Streets_2f.svg' },
+                    { minHeight: 7, maxHeight: 9.7, filename: 'Streets_3f.svg' },
+                    { minHeight: 9.7, maxHeight: 12.7, filename: 'Streets_4f.svg' },
+                    { minHeight: 12.7, maxHeight: null, filename: 'Streets_5f.svg' }
+                ]
+            },
+            'Sandbox': {
+                name: 'Ground Zero',
+                x: 99.5, y: 364.2, scale: 1, svgScale: 8.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'GroundZero.svg' },
+                    { minHeight: null, maxHeight: 16, filename: 'GroundZero_-1f.svg' },
+                    { minHeight: 16, maxHeight: 26, filename: 'GroundZero_1f.svg' },
+                    { minHeight: 26, maxHeight: 31, filename: 'GroundZero_2f.svg' },
+                    { minHeight: 31, maxHeight: null, filename: 'GroundZero_3f.svg' }
+                ]
+            },
+            'Sandbox_high': {
+                name: 'Ground Zero',
+                x: 99.5, y: 364.2, scale: 1, svgScale: 8.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'GroundZero.svg' },
+                    { minHeight: null, maxHeight: 16, filename: 'GroundZero_-1f.svg' },
+                    { minHeight: 16, maxHeight: 26, filename: 'GroundZero_1f.svg' },
+                    { minHeight: 26, maxHeight: 31, filename: 'GroundZero_2f.svg' },
+                    { minHeight: 31, maxHeight: null, filename: 'GroundZero_3f.svg' }
+                ]
+            },
+            'Labyrinth': {
+                name: 'Labyrinth',
+                x: 256, y: 374, scale: 5, svgScale: 2.00,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Labyrinth.svg' }
+                ]
+            },
+            'Terminal': {
+                name: 'Terminal',
+                x: 735, y: 486, scale: 1.0, svgScale: 2.0,
+                layers: [
+                    { minHeight: null, maxHeight: null, filename: 'Terminal.svg' }
+                ]
+            }
+        };
+
         // Radar state
         let ws = null;
         let radarData = null;
         let zoom = 1;
-        let selectedPlayerName = null; // Name of player to center on (null = LocalPlayer)
+        let selectedPlayerName = null;
         let panOffset = { x: 0, y: 0 };
         let isDragging = false;
         let lastMouse = { x: 0, y: 0 };
+        let showMap = true;
+        let mapOpacity = 0.8;
+        let loadedMaps = {}; // Cache for loaded SVG images
+        let currentMapId = null;
 
         // Player type colors and names
         const PLAYER_TYPES = {
@@ -319,7 +475,7 @@
         const waitingMessage = document.getElementById('waiting-message');
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
-        const mapName = document.getElementById('map-name');
+        const mapNameEl = document.getElementById('map-name');
         const povName = document.getElementById('pov-name');
         const playerList = document.getElementById('player-list');
 
@@ -335,6 +491,44 @@
 
         // Connect button handler
         document.getElementById('connect-btn').addEventListener('click', connect);
+
+        // Load map SVGs
+        async function loadMapSvg(filename) {
+            if (loadedMaps[filename]) return loadedMaps[filename];
+
+            try {
+                const response = await fetch(`maps/${filename}`);
+                if (!response.ok) throw new Error('Failed to load map');
+                const svgText = await response.text();
+
+                // Create an image from the SVG
+                const blob = new Blob([svgText], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const img = new Image();
+
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = url;
+                });
+
+                loadedMaps[filename] = img;
+                return img;
+            } catch (e) {
+                console.error(`Failed to load map ${filename}:`, e);
+                return null;
+            }
+        }
+
+        // Preload maps for current map ID
+        async function preloadMaps(mapId) {
+            const config = MAP_CONFIGS[mapId];
+            if (!config) return;
+
+            for (const layer of config.layers) {
+                await loadMapSvg(layer.filename);
+            }
+        }
 
         function setStatus(status, text) {
             statusDot.className = '';
@@ -356,7 +550,6 @@
             errorEl.classList.add('hidden');
             setStatus('connecting', 'Connecting...');
 
-            // Build WebSocket URL
             let wsUrl = relayUrl;
             if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
                 wsUrl = 'wss://' + wsUrl;
@@ -382,7 +575,6 @@
 
                 ws.onmessage = (event) => {
                     if (typeof event.data === 'string') {
-                        // JSON control message
                         try {
                             const msg = JSON.parse(event.data);
                             if (msg.type === 'host_connected') {
@@ -399,7 +591,6 @@
                             console.error('Failed to parse control message:', e);
                         }
                     } else {
-                        // Binary MessagePack data
                         try {
                             waitingMessage.classList.add('hidden');
                             setStatus('connected', 'Connected');
@@ -416,7 +607,6 @@
                     setStatus('error', 'Disconnected');
                     radarData = null;
 
-                    // Show reconnect form after a delay
                     setTimeout(() => {
                         overlay.classList.remove('hidden');
                         connectForm.classList.remove('hidden');
@@ -439,8 +629,6 @@
         }
 
         function handleRadarUpdate(data) {
-            // Data format: [Version, InGame, MapID, Players]
-            // Player format: [Name, Type, IsActive, IsAlive, Position[x,y,z], Rotation[x,y]]
             radarData = {
                 version: data[0],
                 inGame: data[1],
@@ -455,7 +643,14 @@
                 })) : []
             };
 
-            mapName.textContent = radarData.inGame ? (radarData.mapId || 'Unknown') : 'Not in raid';
+            // Load maps if map changed
+            if (radarData.mapId && radarData.mapId !== currentMapId) {
+                currentMapId = radarData.mapId;
+                preloadMaps(currentMapId);
+            }
+
+            const config = MAP_CONFIGS[radarData.mapId];
+            mapNameEl.textContent = radarData.inGame ? (config?.name || radarData.mapId || 'Unknown') : 'Not in raid';
             updatePlayerList();
             updatePovDisplay();
         }
@@ -469,14 +664,10 @@
 
         function getSelectedPlayer() {
             if (!radarData || !radarData.players) return null;
-
-            // If a specific player is selected, find them
             if (selectedPlayerName) {
                 const selected = radarData.players.find(p => p.name === selectedPlayerName);
                 if (selected) return selected;
             }
-
-            // Default to LocalPlayer
             return radarData.players.find(p => p.type === 1) || radarData.players[0];
         }
 
@@ -501,7 +692,6 @@
             const selectedPlayer = getSelectedPlayer();
             const selectedName = selectedPlayer ? selectedPlayer.name : null;
 
-            // Sort: LocalPlayer first, then teammates, then by type
             const sorted = [...radarData.players].sort((a, b) => {
                 if (a.type === 1) return -1;
                 if (b.type === 1) return 1;
@@ -523,6 +713,22 @@
             }).join('');
         }
 
+        // World position to map position conversion
+        function worldToMap(worldX, worldZ, config) {
+            return {
+                x: (config.x * config.svgScale) + (worldX * config.scale * config.svgScale),
+                y: (config.y * config.svgScale) - (worldZ * config.scale * config.svgScale)
+            };
+        }
+
+        // Check if layer should be visible at given height
+        function isLayerVisible(layer, height) {
+            if (layer.minHeight === null && layer.maxHeight === null) return true;
+            if (layer.minHeight !== null && height < layer.minHeight) return false;
+            if (layer.maxHeight !== null && height > layer.maxHeight) return false;
+            return true;
+        }
+
         // Canvas setup
         function resizeCanvas() {
             canvas.width = canvas.clientWidth;
@@ -534,6 +740,12 @@
         // Canvas controls
         document.getElementById('zoom').addEventListener('input', (e) => {
             zoom = parseFloat(e.target.value);
+        });
+        document.getElementById('show-map').addEventListener('change', (e) => {
+            showMap = e.target.checked;
+        });
+        document.getElementById('map-opacity').addEventListener('input', (e) => {
+            mapOpacity = parseFloat(e.target.value);
         });
 
         // Mouse controls for panning
@@ -552,11 +764,9 @@
         canvas.addEventListener('mouseleave', () => isDragging = false);
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            zoom = Math.max(0.5, Math.min(3, zoom - e.deltaY * 0.001));
+            zoom = Math.max(0.3, Math.min(4, zoom - e.deltaY * 0.001));
             document.getElementById('zoom').value = zoom;
         });
-
-        // Double-click to reset pan
         canvas.addEventListener('dblclick', () => {
             panOffset = { x: 0, y: 0 };
         });
@@ -575,41 +785,66 @@
                 return;
             }
 
-            // Find the player to center on (POV player)
             const povPlayer = getSelectedPlayer();
-            const localPlayer = radarData.players.find(p => p.type === 1);
+            const config = MAP_CONFIGS[radarData.mapId];
 
-            // Calculate center point
+            // Calculate center point in map coordinates
             let centerX = canvas.width / 2 + panOffset.x;
             let centerY = canvas.height / 2 + panOffset.y;
-            let offsetX = 0;
-            let offsetY = 0;
+            let povMapPos = { x: 0, y: 0 };
 
-            if (povPlayer) {
-                offsetX = povPlayer.position.x;
-                offsetY = povPlayer.position.z; // Use Z for top-down view
+            if (povPlayer && config) {
+                povMapPos = worldToMap(povPlayer.position.x, povPlayer.position.z, config);
             }
 
-            // Draw grid
-            ctx.strokeStyle = '#1a1a3a';
-            ctx.lineWidth = 1;
-            const gridSize = 50 * zoom;
-            const gridOffsetX = (centerX - offsetX * zoom) % gridSize;
-            const gridOffsetY = (centerY - offsetY * zoom) % gridSize;
-            for (let x = gridOffsetX; x < canvas.width; x += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, canvas.height);
-                ctx.stroke();
-            }
-            for (let y = gridOffsetY; y < canvas.height; y += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
-                ctx.stroke();
+            // Draw map layers
+            if (showMap && config && povPlayer) {
+                ctx.globalAlpha = mapOpacity;
+
+                // Get visible layers based on POV player height
+                const visibleLayers = config.layers.filter(layer =>
+                    isLayerVisible(layer, povPlayer.position.y)
+                );
+
+                for (const layer of visibleLayers) {
+                    const img = loadedMaps[layer.filename];
+                    if (img) {
+                        // Calculate where to draw the map
+                        const mapScale = zoom;
+                        const drawWidth = img.width * mapScale;
+                        const drawHeight = img.height * mapScale;
+
+                        // Center map on POV player
+                        const drawX = centerX - (povMapPos.x * mapScale);
+                        const drawY = centerY - (povMapPos.y * mapScale);
+
+                        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+                    }
+                }
+
+                ctx.globalAlpha = 1;
             }
 
-            // Draw players (draw POV player last so they're on top)
+            // Draw grid if no map
+            if (!showMap || !config) {
+                ctx.strokeStyle = '#1a1a3a';
+                ctx.lineWidth = 1;
+                const gridSize = 50 * zoom;
+                for (let x = centerX % gridSize; x < canvas.width; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    ctx.stroke();
+                }
+                for (let y = centerY % gridSize; y < canvas.height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw players
             const playersToRender = [...radarData.players].sort((a, b) => {
                 if (povPlayer && a.name === povPlayer.name) return 1;
                 if (povPlayer && b.name === povPlayer.name) return -1;
@@ -623,8 +858,18 @@
                 const isPov = povPlayer && player.name === povPlayer.name;
 
                 // Convert world position to screen position
-                const screenX = centerX + (player.position.x - offsetX) * zoom;
-                const screenY = centerY + (player.position.z - offsetY) * zoom; // Z is forward in Unity
+                let screenX, screenY;
+                if (config) {
+                    const playerMapPos = worldToMap(player.position.x, player.position.z, config);
+                    screenX = centerX + (playerMapPos.x - povMapPos.x) * zoom;
+                    screenY = centerY + (playerMapPos.y - povMapPos.y) * zoom;
+                } else {
+                    // Fallback if no map config
+                    const offsetX = povPlayer ? povPlayer.position.x : 0;
+                    const offsetY = povPlayer ? povPlayer.position.z : 0;
+                    screenX = centerX + (player.position.x - offsetX) * zoom;
+                    screenY = centerY + (player.position.z - offsetY) * zoom;
+                }
 
                 // Skip if off-screen
                 if (screenX < -50 || screenX > canvas.width + 50 ||
@@ -633,7 +878,7 @@
                 // Draw aim line
                 if (player.isAlive) {
                     const aimLength = isPov ? 100 : 40;
-                    const aimRad = (player.rotation.x - 90) * Math.PI / 180; // Convert to radians
+                    const aimRad = (player.rotation.x - 90) * Math.PI / 180;
                     const aimEndX = screenX + Math.cos(aimRad) * aimLength * zoom;
                     const aimEndY = screenY + Math.sin(aimRad) * aimLength * zoom;
 
@@ -649,7 +894,7 @@
                 const radius = isPov ? 10 : 6;
                 ctx.fillStyle = player.isAlive ? typeInfo.color : '#666';
                 ctx.beginPath();
-                ctx.arc(screenX, screenY, radius * (zoom > 1 ? 1 : zoom), 0, Math.PI * 2);
+                ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Draw outline for POV player
@@ -661,19 +906,25 @@
 
                 // Draw name label
                 ctx.fillStyle = player.isAlive ? '#fff' : '#888';
-                ctx.font = `${isPov ? 'bold ' : ''}${Math.max(10, 12 * zoom)}px Segoe UI`;
+                ctx.font = `${isPov ? 'bold ' : ''}12px Segoe UI`;
                 ctx.textAlign = 'center';
-                ctx.fillText(player.name, screenX, screenY - radius * zoom - 8);
 
-                // Draw height indicator (relative to POV player)
-                const refPlayer = povPlayer || localPlayer;
+                // Add shadow for readability on map
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.strokeText(player.name, screenX, screenY - radius - 8);
+                ctx.fillText(player.name, screenX, screenY - radius - 8);
+
+                // Draw height indicator
+                const refPlayer = povPlayer;
                 if (refPlayer) {
                     const heightDiff = player.position.y - refPlayer.position.y;
                     if (Math.abs(heightDiff) > 2) {
                         ctx.fillStyle = heightDiff > 0 ? '#4ade80' : '#f87171';
-                        ctx.font = `${Math.max(8, 10 * zoom)}px Segoe UI`;
+                        ctx.font = '10px Segoe UI';
                         const heightText = heightDiff > 0 ? `+${Math.round(heightDiff)}` : Math.round(heightDiff).toString();
-                        ctx.fillText(heightText, screenX, screenY + radius * zoom + 15);
+                        ctx.strokeText(heightText, screenX, screenY + radius + 15);
+                        ctx.fillText(heightText, screenX, screenY + radius + 15);
                     }
                 }
             }
@@ -682,6 +933,9 @@
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 14px Segoe UI';
             ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText('N', canvas.width / 2, 20);
             ctx.fillText('N', canvas.width / 2, 20);
 
             // Draw POV indicator
@@ -689,6 +943,7 @@
                 ctx.fillStyle = '#e94560';
                 ctx.font = '12px Segoe UI';
                 ctx.textAlign = 'left';
+                ctx.strokeText(`POV: ${povPlayer.name}`, 10, canvas.height - 10);
                 ctx.fillText(`POV: ${povPlayer.name}`, 10, canvas.height - 10);
             }
 
