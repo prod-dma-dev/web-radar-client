@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Player, LootItem, RadarState, LootFilterSettings, LootColors, GameItem, LootFilterEntry, UserLootFilterConfig } from '../types';
+import type { Player, LootItem, Extract, RadarState, LootFilterSettings, LootColors, GameItem, LootFilterEntry, UserLootFilterConfig } from '../types';
 import { DEFAULT_LOOT_COLORS, DEFAULT_LOOT_FILTER } from '../types';
 
 interface RadarActions {
@@ -10,7 +10,7 @@ interface RadarActions {
   setRoomId: (id: string) => void;
 
   // Radar data
-  updateRadar: (inGame: boolean, mapId: string, players: Player[], loot: LootItem[], itemDatabase?: GameItem[]) => void;
+  updateRadar: (inGame: boolean, mapId: string, players: Player[], loot: LootItem[], itemDatabase?: GameItem[], extracts?: Extract[]) => void;
   setItemDatabase: (items: GameItem[]) => void;
 
   // View settings
@@ -27,6 +27,7 @@ interface RadarActions {
   setShowPlayerNames: (show: boolean) => void;
   setShowAimlines: (show: boolean) => void;
   setShowHeightDiff: (show: boolean) => void;
+  setShowExtracts: (show: boolean) => void;
 
   // Loot filter settings
   setLootEnabled: (enabled: boolean) => void;
@@ -68,6 +69,7 @@ const initialState: RadarState = {
   mapId: '',
   players: [],
   loot: [],
+  extracts: [],
   itemDatabase: [],
   customFilterEntries: new Map(),
   zoom: 1,
@@ -81,6 +83,7 @@ const initialState: RadarState = {
   showPlayerNames: true,
   showAimlines: true,
   showHeightDiff: true,
+  showExtracts: true,
   lootFilter: { ...DEFAULT_LOOT_FILTER },
   lootColors: { ...DEFAULT_LOOT_COLORS },
 };
@@ -98,6 +101,7 @@ interface PersistedState {
   showPlayerNames: boolean;
   showAimlines: boolean;
   showHeightDiff: boolean;
+  showExtracts: boolean;
   zoom: number;
   showMap: boolean;
   mapOpacity: number;
@@ -118,7 +122,7 @@ export const useRadarStore = create<RadarState & RadarActions>()(
       setRoomId: (roomId) =>
         set((state) => ({ connection: { ...state.connection, roomId } })),
 
-      updateRadar: (inGame, mapId, players, loot, itemDatabase) =>
+      updateRadar: (inGame, mapId, players, loot, itemDatabase, extracts) =>
         set((state) => ({
           inGame,
           mapId,
@@ -126,6 +130,8 @@ export const useRadarStore = create<RadarState & RadarActions>()(
           loot,
           // Only update itemDatabase if provided and not empty
           itemDatabase: itemDatabase && itemDatabase.length > 0 ? itemDatabase : state.itemDatabase,
+          // Only update extracts if provided
+          extracts: extracts && extracts.length > 0 ? extracts : state.extracts,
         })),
 
       setItemDatabase: (itemDatabase) => set({ itemDatabase }),
@@ -143,6 +149,7 @@ export const useRadarStore = create<RadarState & RadarActions>()(
       setShowPlayerNames: (showPlayerNames) => set({ showPlayerNames }),
       setShowAimlines: (showAimlines) => set({ showAimlines }),
       setShowHeightDiff: (showHeightDiff) => set({ showHeightDiff }),
+      setShowExtracts: (showExtracts) => set({ showExtracts }),
 
       // Loot filter settings
       setLootEnabled: (enabled) =>
@@ -199,6 +206,7 @@ export const useRadarStore = create<RadarState & RadarActions>()(
           showPlayerNames: state.showPlayerNames,
           showAimlines: state.showAimlines,
           showHeightDiff: state.showHeightDiff,
+          showExtracts: state.showExtracts,
           zoom: state.zoom,
           showMap: state.showMap,
           mapOpacity: state.mapOpacity,
@@ -219,6 +227,7 @@ export const useRadarStore = create<RadarState & RadarActions>()(
             showPlayerNames: data.showPlayerNames ?? state.showPlayerNames,
             showAimlines: data.showAimlines ?? state.showAimlines,
             showHeightDiff: data.showHeightDiff ?? state.showHeightDiff,
+            showExtracts: data.showExtracts ?? state.showExtracts,
             zoom: data.zoom ?? state.zoom,
             showMap: data.showMap ?? state.showMap,
             mapOpacity: data.mapOpacity ?? state.mapOpacity,
@@ -280,6 +289,7 @@ export const useRadarStore = create<RadarState & RadarActions>()(
         showPlayerNames: state.showPlayerNames,
         showAimlines: state.showAimlines,
         showHeightDiff: state.showHeightDiff,
+        showExtracts: state.showExtracts,
         zoom: state.zoom,
         showMap: state.showMap,
         mapOpacity: state.mapOpacity,

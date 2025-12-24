@@ -38,6 +38,8 @@ export function Filters() {
     setShowAimlines,
     showHeightDiff,
     setShowHeightDiff,
+    showExtracts,
+    setShowExtracts,
   } = useRadarStore();
 
   const filters = [
@@ -46,6 +48,7 @@ export function Filters() {
     { label: 'Player Names', checked: showPlayerNames, onChange: setShowPlayerNames },
     { label: 'Aim Lines', checked: showAimlines, onChange: setShowAimlines },
     { label: 'Height Difference', checked: showHeightDiff, onChange: setShowHeightDiff },
+    { label: 'Show Extracts', checked: showExtracts, onChange: setShowExtracts },
   ];
 
   return (

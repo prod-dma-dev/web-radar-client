@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { decode } from '@msgpack/msgpack';
 import { useRadarStore } from '../store/radarStore';
-import type { Player, PlayerType, LootItem, LootType, GameItem, GearItem } from '../types';
+import type { Player, PlayerType, LootItem, LootType, GameItem, GearItem, Extract } from '../types';
 
 interface RawGearItem {
   0: string;      // slot
@@ -40,6 +40,12 @@ interface RawGameItem {
   4: number;      // flags (packed byte)
 }
 
+interface RawExfil {
+  0: string;      // name
+  1: number[];    // position [x, y, z]
+  2: boolean;     // isTransit
+}
+
 interface RawRadarUpdate {
   0: number;        // version
   1: boolean;       // inGame
@@ -47,6 +53,7 @@ interface RawRadarUpdate {
   3: RawPlayer[];   // players
   4: RawLootItem[] | null; // loot
   5: RawGameItem[] | null; // itemDatabase
+  6: RawExfil[] | null; // extracts
 }
 
 function parseGearItem(raw: RawGearItem): GearItem {
@@ -117,6 +124,18 @@ function parseGameItem(raw: RawGameItem): GameItem {
   };
 }
 
+function parseExfil(raw: RawExfil): Extract {
+  return {
+    name: raw[0],
+    position: {
+      x: raw[1][0],
+      y: raw[1][1],
+      z: raw[1][2],
+    },
+    isTransit: raw[2],
+  };
+}
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -163,7 +182,8 @@ export function useWebSocket() {
           const players = (data[3] || []).map(parsePlayer);
           const loot = (data[4] || []).map(parseLootItem);
           const itemDatabase = data[5] ? data[5].map(parseGameItem) : undefined;
-          updateRadar(data[1], data[2], players, loot, itemDatabase);
+          const extracts = data[6] ? data[6].map(parseExfil) : undefined;
+          updateRadar(data[1], data[2], players, loot, itemDatabase, extracts);
         }
       } catch (err) {
         console.error('Error processing message:', err);

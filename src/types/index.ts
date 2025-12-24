@@ -68,6 +68,12 @@ export interface GearItem {
   isImportant: boolean;
 }
 
+export interface Extract {
+  name: string;
+  position: { x: number; y: number; z: number };
+  isTransit: boolean;
+}
+
 export interface Player {
   name: string;
   type: PlayerType;
@@ -146,6 +152,7 @@ export interface RadarState {
   mapId: string;
   players: Player[];
   loot: LootItem[];
+  extracts: Extract[];
 
   // Item database (for fuzzy search - all game items)
   itemDatabase: GameItem[];
@@ -167,6 +174,7 @@ export interface RadarState {
   showPlayerNames: boolean;
   showAimlines: boolean;
   showHeightDiff: boolean;
+  showExtracts: boolean;
 
   // Loot settings
   lootFilter: LootFilterSettings;
@@ -180,6 +188,10 @@ export const PLAYER_COLORS: Record<PlayerType, string> = {
   [PlayerType.PlayerScav]: '#f97316',
   [PlayerType.Bot]: '#fbbf24',
 };
+
+// Extract point colors
+export const EXTRACT_COLOR = '#10b981';   // Emerald green for regular extracts
+export const TRANSIT_COLOR = '#8b5cf6';   // Purple for transit points
 
 export function getPlayerColor(player: Player): string {
   if (!player.isAlive) return '#555555';
