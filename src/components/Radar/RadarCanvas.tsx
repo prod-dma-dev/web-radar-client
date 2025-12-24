@@ -532,42 +532,50 @@ export function RadarCanvas() {
     const povColor = '#22c55e'; // Green color for POV player and teammates
     const newPlayerPositions: PlayerScreenPos[] = [];
 
+    // Store player render info for text pass
+    const playerRenderInfo: Array<{
+      player: Player;
+      pos: { x: number; y: number };
+      screenX: number;
+      screenY: number;
+      radius: number;
+      color: string;
+      isPovPlayer: boolean;
+    }> = [];
+
+    // First pass: draw all player shapes in map space
     sortedPlayers.forEach(player => {
       if (!mapConfig) return;
       const pos = worldToMap(player.position.x, player.position.z, mapConfig, imgWidth, viewBoxWidth);
       const isLocal = player.type === PlayerType.LocalPlayer;
       const isTeammate = player.type === PlayerType.Teammate;
-      // POV is either the custom selected player, or LocalPlayer if none selected
       const isPovPlayer = povPlayerName ? player.name === povPlayerName : isLocal;
-      // POV player and teammates get green color, others use normal color
       const color = (isPovPlayer || isTeammate) ? povColor : getPlayerColor(player);
-      // POV player slightly larger, others use base size
       const radius = isPovPlayer ? baseRadius * 1.3 : baseRadius;
 
-      // Track screen position for hover detection (for non-local players)
+      const screenX = offsetX + pos.x * effectiveZoom;
+      const screenY = offsetY + pos.y * effectiveZoom;
+
+      // Track for hover detection
       if (!isLocal) {
-        const playerScreenX = offsetX + pos.x * effectiveZoom;
-        const playerScreenY = offsetY + pos.y * effectiveZoom;
         newPlayerPositions.push({
           player,
-          screenX: playerScreenX,
-          screenY: playerScreenY,
-          radius: (radius + 2) * effectiveZoom, // Add some padding for easier hovering
+          screenX,
+          screenY,
+          radius: (radius + 2) * effectiveZoom,
         });
       }
 
+      // Store for text pass
+      playerRenderInfo.push({ player, pos, screenX, screenY, radius, color, isPovPlayer });
+
       // Aimline
       if (showAimlines && player.isAlive) {
-        const aimLength = isPovPlayer ? 15 : 10; // In image coordinate units
-        // Use rotation.x for horizontal aim direction (game uses different axis convention)
+        const aimLength = isPovPlayer ? 15 : 10;
         const yaw = (player.rotation.x - 90) * (Math.PI / 180);
-
         ctx.beginPath();
         ctx.moveTo(pos.x, pos.y);
-        ctx.lineTo(
-          pos.x + Math.cos(yaw) * aimLength,
-          pos.y + Math.sin(yaw) * aimLength
-        );
+        ctx.lineTo(pos.x + Math.cos(yaw) * aimLength, pos.y + Math.sin(yaw) * aimLength);
         ctx.strokeStyle = color;
         ctx.lineWidth = 0.25;
         ctx.globalAlpha = 0.8;
@@ -597,41 +605,38 @@ export function RadarCanvas() {
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
+    });
 
-      // Player name - draw in screen space for readable text
-      if (showPlayerNames) {
-        ctx.save();
-        // Reset transform for text rendering
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.restore();
 
-        // Calculate screen position
-        const screenX = offsetX + pos.x * effectiveZoom;
-        const screenY = offsetY + pos.y * effectiveZoom;
+    // Second pass: draw all player text labels in screen space (single transform switch)
+    if (showPlayerNames && playerRenderInfo.length > 0) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+      for (const { player, screenX, screenY, radius } of playerRenderInfo) {
+        const textY = screenY - radius * effectiveZoom - 5;
+
+        // Player name
         ctx.font = '11px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-
-        // Text outline
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = 3;
-        ctx.strokeText(player.name, screenX, screenY - radius * effectiveZoom - 5);
-
-        // Text fill
+        ctx.strokeText(player.name, screenX, textY);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(player.name, screenX, screenY - radius * effectiveZoom - 5);
+        ctx.fillText(player.name, screenX, textY);
 
-        // Player type label for human players (PMC/PlayerScav) - drawn below the name
+        // Player type label for PMC/PlayerScav
         if (player.type === PlayerType.PMC || player.type === PlayerType.PlayerScav) {
           const typeLabel = player.type === PlayerType.PMC ? '[PMC]' : '[PlayerScav]';
-          const nameY = screenY - radius * effectiveZoom - 5;
           ctx.font = '8px Arial';
           ctx.textBaseline = 'top';
           ctx.strokeStyle = '#000000';
           ctx.lineWidth = 2;
-          ctx.strokeText(typeLabel, screenX, nameY + 1);
+          ctx.strokeText(typeLabel, screenX, textY + 1);
           ctx.fillStyle = player.type === PlayerType.PMC ? '#f59e0b' : '#a78bfa';
-          ctx.fillText(typeLabel, screenX, nameY + 1);
+          ctx.fillText(typeLabel, screenX, textY + 1);
         }
 
         // Height difference
@@ -648,11 +653,10 @@ export function RadarCanvas() {
             ctx.fillText(heightText, screenX, screenY + radius * effectiveZoom + 3);
           }
         }
-        ctx.restore();
       }
-    });
 
-    ctx.restore();
+      ctx.restore();
+    }
 
     // Store player positions for hover detection
     playerScreenPosRef.current = newPlayerPositions;
