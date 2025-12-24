@@ -404,52 +404,51 @@ export function RadarCanvas() {
     if (showExtracts && mapConfig && extracts.length > 0) {
       const extractRadius = 1.2;
 
+      // First pass: draw shapes in map space
       extracts.forEach(extract => {
         const pos = worldToMap(extract.position.x, extract.position.z, mapConfig, imgWidth, viewBoxWidth);
         const color = extract.isTransit ? TRANSIT_COLOR : EXTRACT_COLOR;
         const heightDiff = extract.position.y - (localPlayer?.position.y ?? 0);
 
-        // Draw shape based on height difference
         ctx.fillStyle = color;
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.lineWidth = 0.3;
 
         if (heightDiff > 1.85) {
-          // Above player - up arrow
           drawUpArrow(ctx, pos.x, pos.y, extractRadius * 1.3);
         } else if (heightDiff < -1.85) {
-          // Below player - down arrow
           drawDownArrow(ctx, pos.x, pos.y, extractRadius * 1.3);
         } else {
-          // Same level - circle
           ctx.beginPath();
           ctx.arc(pos.x, pos.y, extractRadius, 0, Math.PI * 2);
           ctx.stroke();
           ctx.fill();
         }
+      });
 
-        // Draw label in screen space
+      // Second pass: draw labels in screen space (only when zoomed in enough)
+      if (effectiveZoom > 0.8) {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-        const screenX = offsetX + pos.x * effectiveZoom;
-        const screenY = offsetY + pos.y * effectiveZoom;
-
         ctx.font = '9px Arial';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
-        // Text outline
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
-        ctx.strokeText(extract.name, screenX + 10, screenY);
+        extracts.forEach(extract => {
+          const pos = worldToMap(extract.position.x, extract.position.z, mapConfig, imgWidth, viewBoxWidth);
+          const color = extract.isTransit ? TRANSIT_COLOR : EXTRACT_COLOR;
+          const screenX = offsetX + pos.x * effectiveZoom;
+          const screenY = offsetY + pos.y * effectiveZoom;
 
-        // Text fill
-        ctx.fillStyle = color;
-        ctx.fillText(extract.name, screenX + 10, screenY);
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 2;
+          ctx.strokeText(extract.name, screenX + 10, screenY);
+          ctx.fillStyle = color;
+          ctx.fillText(extract.name, screenX + 10, screenY);
+        });
 
         ctx.restore();
-      });
+      }
     }
 
     // Draw loot (before players so players appear on top)
