@@ -8,10 +8,17 @@ export default {
     extend: {
       colors: {
         radar: {
-          bg: '#0f0f1a',
-          panel: '#1a1a2e',
+          bg: '#0a0a12',
+          panel: '#12121e',
+          'panel-light': '#1a1a2e',
           border: '#2d2d44',
-          accent: '#ef4444',
+          'border-light': '#3d3d5c',
+          accent: '#6366f1',
+          'accent-hover': '#818cf8',
+          success: '#10b981',
+          warning: '#f59e0b',
+          danger: '#ef4444',
+          muted: '#6b7280',
           player: {
             local: '#3b82f6',
             teammate: '#22c55e',
@@ -21,6 +28,10 @@ export default {
             dead: '#555555',
           }
         }
+      },
+      boxShadow: {
+        'glow': '0 0 20px rgba(99, 102, 241, 0.15)',
+        'glow-sm': '0 0 10px rgba(99, 102, 241, 0.1)',
       }
     },
   },

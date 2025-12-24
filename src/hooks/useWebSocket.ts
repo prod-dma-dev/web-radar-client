@@ -1,7 +1,14 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { decode } from '@msgpack/msgpack';
 import { useRadarStore } from '../store/radarStore';
-import type { Player, PlayerType, LootItem, LootType } from '../types';
+import type { Player, PlayerType, LootItem, LootType, GameItem, GearItem } from '../types';
+
+interface RawGearItem {
+  0: string;      // slot
+  1: string;      // name
+  2: number;      // value
+  3: boolean;     // isImportant
+}
 
 interface RawPlayer {
   0: string;      // name
@@ -10,6 +17,9 @@ interface RawPlayer {
   3: boolean;     // isAlive
   4: number[];    // position [x, y, z]
   5: number[];    // rotation [x, y]
+  6: number;      // gearValue
+  7: RawGearItem[] | null; // gear
+  8: boolean;     // hasImportantLoot
 }
 
 interface RawLootItem {
@@ -22,12 +32,30 @@ interface RawLootItem {
   6: string | null; // ownerName (for corpses)
 }
 
+interface RawGameItem {
+  0: string;      // id
+  1: string;      // shortName
+  2: string;      // name
+  3: number;      // price
+  4: number;      // flags (packed byte)
+}
+
 interface RawRadarUpdate {
   0: number;        // version
   1: boolean;       // inGame
   2: string;        // mapId
   3: RawPlayer[];   // players
   4: RawLootItem[] | null; // loot
+  5: RawGameItem[] | null; // itemDatabase
+}
+
+function parseGearItem(raw: RawGearItem): GearItem {
+  return {
+    slot: raw[0],
+    name: raw[1],
+    value: raw[2],
+    isImportant: raw[3],
+  };
 }
 
 function parsePlayer(raw: RawPlayer): Player {
@@ -45,6 +73,9 @@ function parsePlayer(raw: RawPlayer): Player {
       x: raw[5][0],
       y: raw[5][1],
     },
+    gearValue: raw[6] || 0,
+    gear: raw[7] ? raw[7].map(parseGearItem) : null,
+    hasImportantLoot: raw[8] || false,
   };
 }
 
@@ -70,6 +101,19 @@ function parseLootItem(raw: RawLootItem): LootItem {
     isBlacklisted: (flags & 0x40) !== 0,
     hasImportantLoot: (flags & 0x80) !== 0,
     ownerName: raw[6] ?? undefined,
+  };
+}
+
+function parseGameItem(raw: RawGameItem): GameItem {
+  const flags = raw[4];
+  return {
+    id: raw[0],
+    shortName: raw[1],
+    name: raw[2],
+    price: raw[3],
+    isMeds: (flags & 0x01) !== 0,
+    isFood: (flags & 0x02) !== 0,
+    isBackpack: (flags & 0x04) !== 0,
   };
 }
 
@@ -118,7 +162,8 @@ export function useWebSocket() {
           const data = decode(new Uint8Array(event.data)) as RawRadarUpdate;
           const players = (data[3] || []).map(parsePlayer);
           const loot = (data[4] || []).map(parseLootItem);
-          updateRadar(data[1], data[2], players, loot);
+          const itemDatabase = data[5] ? data[5].map(parseGameItem) : undefined;
+          updateRadar(data[1], data[2], players, loot, itemDatabase);
         }
       } catch (err) {
         console.error('Error processing message:', err);

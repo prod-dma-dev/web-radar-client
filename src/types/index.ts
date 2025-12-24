@@ -6,6 +6,33 @@ export enum PlayerType {
   PlayerScav = 4,
 }
 
+// Game item from database (for fuzzy search)
+export interface GameItem {
+  id: string;
+  shortName: string;
+  name: string;
+  price: number;
+  isMeds: boolean;
+  isFood: boolean;
+  isBackpack: boolean;
+}
+
+// Loot filter entry (from config.json)
+export interface LootFilterEntry {
+  itemID: string;
+  enabled: boolean;
+  type: 0 | 1; // 0 = Important, 1 = Blacklisted
+  color?: string;
+  comment?: string;
+}
+
+// User loot filter config (matches C# app format)
+export interface UserLootFilterConfig {
+  enabled: boolean;
+  color: string;
+  entries: LootFilterEntry[];
+}
+
 // Loot types
 export enum LootType {
   Regular = 0,
@@ -34,6 +61,13 @@ export interface LootItem {
   hasImportantLoot?: boolean; // Corpse contains important loot
 }
 
+export interface GearItem {
+  slot: string;
+  name: string;
+  value: number;
+  isImportant: boolean;
+}
+
 export interface Player {
   name: string;
   type: PlayerType;
@@ -41,6 +75,9 @@ export interface Player {
   isAlive: boolean;
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number };
+  gearValue: number;
+  gear: GearItem[] | null;
+  hasImportantLoot: boolean;
 }
 
 export interface RadarUpdate {
@@ -84,6 +121,7 @@ export interface LootFilterSettings {
   showBackpacks: boolean;    // Show backpacks regardless of value
   showQuestItems: boolean;   // Show quest items regardless of value
   showWishlist: boolean;     // Show wishlisted items regardless of value
+  searchFilter: string;      // Text search filter for item names
 }
 
 // Loot color configuration
@@ -109,12 +147,19 @@ export interface RadarState {
   players: Player[];
   loot: LootItem[];
 
+  // Item database (for fuzzy search - all game items)
+  itemDatabase: GameItem[];
+
+  // Custom loot filter entries (important/blacklisted items)
+  customFilterEntries: Map<string, LootFilterEntry>;
+
   // View settings
   zoom: number;
   showMap: boolean;
   mapOpacity: number;
   selectedPlayerId: string | null;
   povPlayerName: string | null; // Player name to center view on (null = LocalPlayer)
+  sidebarCollapsed: boolean;
 
   // Player filter settings
   showBots: boolean;
@@ -177,6 +222,7 @@ export const DEFAULT_LOOT_FILTER: LootFilterSettings = {
   showBackpacks: true,
   showQuestItems: true,
   showWishlist: true,
+  searchFilter: '',
 };
 
 // Get the display color for a loot item based on its properties and filter settings
@@ -236,6 +282,14 @@ export function getLootColor(item: LootItem, colors: LootColors, filter: LootFil
 export function shouldShowLoot(item: LootItem, filter: LootFilterSettings): boolean {
   if (!filter.enabled) return false;
   if (item.isBlacklisted) return false;
+
+  // Search filter - if set, item name must contain the search text
+  if (filter.searchFilter && filter.searchFilter.trim()) {
+    const search = filter.searchFilter.toLowerCase().trim();
+    if (!item.name.toLowerCase().includes(search)) {
+      return false;
+    }
+  }
 
   // Corpses
   if (item.type === LootType.Corpse) {

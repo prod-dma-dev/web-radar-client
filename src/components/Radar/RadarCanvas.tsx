@@ -3,11 +3,14 @@ import { useRadarStore } from '../../store/radarStore';
 import { getMapConfig, loadMapConfig } from '../../config/maps';
 import {
   getPlayerColor,
+  getPlayerTypeName,
   PlayerType,
   getLootColor,
   getLootLabel,
   shouldShowLoot,
+  formatPrice,
   type MapConfig,
+  type Player,
 } from '../../types';
 
 // Helper function to draw up arrow (for items above player)
@@ -32,6 +35,123 @@ function drawDownArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size
   ctx.fill();
 }
 
+// Draw player tooltip with gear info
+function drawPlayerTooltip(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  mouseX: number,
+  mouseY: number,
+  localPlayer: Player | undefined
+) {
+  const padding = 10;
+  const lineHeight = 16;
+
+  // Build tooltip lines
+  const lines: { text: string; color: string; bold?: boolean }[] = [];
+
+  // Header: Player name and type
+  const typeName = getPlayerTypeName(player.type);
+  const importantPrefix = player.hasImportantLoot ? '!! ' : '';
+  lines.push({
+    text: `${importantPrefix}${player.name}`,
+    color: player.hasImportantLoot ? '#ff6b6b' : '#ffffff',
+    bold: true,
+  });
+  lines.push({ text: typeName, color: '#aaaaaa' });
+
+  // Height/Distance from local player
+  if (localPlayer) {
+    const heightDiff = Math.round(player.position.y - localPlayer.position.y);
+    const dx = player.position.x - localPlayer.position.x;
+    const dz = player.position.z - localPlayer.position.z;
+    const distance = Math.round(Math.sqrt(dx * dx + dz * dz));
+    lines.push({ text: `H: ${heightDiff > 0 ? '+' : ''}${heightDiff}  D: ${distance}m`, color: '#888888' });
+  }
+
+  // Total gear value
+  if (player.gearValue > 0) {
+    lines.push({ text: '', color: '' }); // Spacer
+    lines.push({ text: `Value: ${formatPrice(player.gearValue)}`, color: '#40E0D0', bold: true });
+  }
+
+  // Gear items
+  if (player.gear && player.gear.length > 0) {
+    for (const item of player.gear) {
+      const prefix = item.isImportant ? '!! ' : '';
+      const color = item.isImportant ? '#ff6b6b' : '#cccccc';
+      lines.push({ text: `${prefix}${item.slot}: ${item.name}`, color });
+    }
+  }
+
+  // Calculate tooltip dimensions
+  ctx.font = '12px Arial';
+  let maxWidth = 0;
+  for (const line of lines) {
+    if (line.text) {
+      const width = ctx.measureText(line.text).width;
+      if (width > maxWidth) maxWidth = width;
+    }
+  }
+
+  const tooltipWidth = maxWidth + padding * 2;
+  const tooltipHeight = lines.length * lineHeight + padding * 2;
+
+  // Position tooltip (offset from cursor, keep on screen)
+  let tooltipX = mouseX + 15;
+  let tooltipY = mouseY + 15;
+
+  // Keep tooltip on screen
+  if (tooltipX + tooltipWidth > ctx.canvas.width) {
+    tooltipX = mouseX - tooltipWidth - 15;
+  }
+  if (tooltipY + tooltipHeight > ctx.canvas.height) {
+    tooltipY = mouseY - tooltipHeight - 15;
+  }
+  if (tooltipX < 0) tooltipX = 5;
+  if (tooltipY < 0) tooltipY = 5;
+
+  // Draw background
+  ctx.fillStyle = 'rgba(15, 15, 26, 0.95)';
+  ctx.strokeStyle = 'rgba(100, 100, 140, 0.5)';
+  ctx.lineWidth = 1;
+
+  // Rounded rectangle
+  const cornerRadius = 6;
+  ctx.beginPath();
+  ctx.moveTo(tooltipX + cornerRadius, tooltipY);
+  ctx.lineTo(tooltipX + tooltipWidth - cornerRadius, tooltipY);
+  ctx.quadraticCurveTo(tooltipX + tooltipWidth, tooltipY, tooltipX + tooltipWidth, tooltipY + cornerRadius);
+  ctx.lineTo(tooltipX + tooltipWidth, tooltipY + tooltipHeight - cornerRadius);
+  ctx.quadraticCurveTo(tooltipX + tooltipWidth, tooltipY + tooltipHeight, tooltipX + tooltipWidth - cornerRadius, tooltipY + tooltipHeight);
+  ctx.lineTo(tooltipX + cornerRadius, tooltipY + tooltipHeight);
+  ctx.quadraticCurveTo(tooltipX, tooltipY + tooltipHeight, tooltipX, tooltipY + tooltipHeight - cornerRadius);
+  ctx.lineTo(tooltipX, tooltipY + cornerRadius);
+  ctx.quadraticCurveTo(tooltipX, tooltipY, tooltipX + cornerRadius, tooltipY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Draw lines
+  let y = tooltipY + padding + lineHeight - 4;
+  for (const line of lines) {
+    if (line.text) {
+      ctx.font = line.bold ? 'bold 12px Arial' : '12px Arial';
+      ctx.fillStyle = line.color;
+      ctx.textAlign = 'left';
+      ctx.fillText(line.text, tooltipX + padding, y);
+    }
+    y += lineHeight;
+  }
+}
+
+// Player screen position for hover detection
+interface PlayerScreenPos {
+  player: Player;
+  screenX: number;
+  screenY: number;
+  radius: number;
+}
+
 export function RadarCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +171,11 @@ export function RadarCanvas() {
   const panRef = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
+
+  // Hover state for player tooltips
+  const [hoveredPlayer, setHoveredPlayer] = useState<Player | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const playerScreenPosRef = useRef<PlayerScreenPos[]>([]);
 
   const {
     mapId,
@@ -187,21 +312,24 @@ export function RadarCanvas() {
     ctx.fillStyle = '#0f0f1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Select the correct map layer based on POV player's height
+    // Select visible map layers based on POV player's height
+    // C# draws ALL matching layers (base + current floor), not just one
     const playerHeight = povPlayer?.position.y ?? 0;
-    let activeLayer = mapLayersRef.current[0]; // Default to first layer
 
-    // Find matching layer based on height - check layers in reverse order (higher floors first)
-    for (let i = mapLayersRef.current.length - 1; i >= 0; i--) {
-      const layer = mapLayersRef.current[i];
+    // Find all layers that match the current height
+    const visibleLayers = mapLayersRef.current.filter(layer => {
+      // Base layer (no min/max) is always visible
+      const isBaseLayer = layer.minHeight === undefined && layer.maxHeight === undefined;
+      if (isBaseLayer) return true;
+
+      // Check height bounds (C# logic: h >= min && h <= max)
       const minOk = layer.minHeight === undefined || playerHeight >= layer.minHeight;
       const maxOk = layer.maxHeight === undefined || playerHeight <= layer.maxHeight;
-      if (minOk && maxOk) {
-        activeLayer = layer;
-        break;
-      }
-    }
+      return minOk && maxOk;
+    });
 
+    // Use first visible layer for coordinate calculations (usually base layer)
+    const activeLayer = visibleLayers[0];
     const currentImage = activeLayer?.image;
     const currentViewBox = activeLayer?.viewBox;
 
@@ -222,10 +350,24 @@ export function RadarCanvas() {
     ctx.translate(offsetX, offsetY);
     ctx.scale(effectiveZoom, effectiveZoom);
 
-    // Draw map at its natural SVG size (transform handles scaling)
-    if (showMap && currentImage && mapConfig) {
-      ctx.globalAlpha = mapOpacity;
-      ctx.drawImage(currentImage, 0, 0);
+    // Draw all visible map layers (base layer first, then floor-specific layers on top)
+    if (showMap && visibleLayers.length > 0 && mapConfig) {
+      // Sort layers: base layers first, then by minHeight ascending
+      const sortedLayers = [...visibleLayers].sort((a, b) => {
+        const aIsBase = a.minHeight === undefined && a.maxHeight === undefined;
+        const bIsBase = b.minHeight === undefined && b.maxHeight === undefined;
+        if (aIsBase && !bIsBase) return -1;
+        if (!aIsBase && bIsBase) return 1;
+        return (a.minHeight ?? -Infinity) - (b.minHeight ?? -Infinity);
+      });
+
+      // Draw each visible layer
+      sortedLayers.forEach((layer, index) => {
+        const isTopLayer = index === sortedLayers.length - 1;
+        // Dim lower layers slightly (like C# radar does)
+        ctx.globalAlpha = isTopLayer ? mapOpacity : mapOpacity * 0.5;
+        ctx.drawImage(layer.image, 0, 0);
+      });
       ctx.globalAlpha = 1;
     }
 
@@ -263,7 +405,7 @@ export function RadarCanvas() {
         return a.price - b.price;
       });
 
-      const lootRadius = 1.2;
+      const lootRadius = 0.7;
 
       sortedLoot.forEach(item => {
         const pos = worldToMap(item.position.x, item.position.z, mapConfig, imgWidth, viewBoxWidth);
@@ -273,14 +415,14 @@ export function RadarCanvas() {
         // Draw shape based on height difference
         ctx.fillStyle = color;
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.lineWidth = 0.3;
+        ctx.lineWidth = 0.2;
 
         if (heightDiff > 1.45) {
           // Above player - up arrow
-          drawUpArrow(ctx, pos.x, pos.y, lootRadius * 2);
+          drawUpArrow(ctx, pos.x, pos.y, lootRadius * 1.4);
         } else if (heightDiff < -1.45) {
           // Below player - down arrow
-          drawDownArrow(ctx, pos.x, pos.y, lootRadius * 2);
+          drawDownArrow(ctx, pos.x, pos.y, lootRadius * 1.4);
         } else {
           // Same level - circle
           ctx.beginPath();
@@ -327,18 +469,38 @@ export function RadarCanvas() {
       return 0;
     });
 
-    // Draw players
-    const baseRadius = 1.5; // Base radius in image coordinate units
+    // Draw players and track screen positions for hover detection
+    const baseRadius = 0.8; // Base radius in image coordinate units (smaller for less map blocking)
+    const povColor = '#22c55e'; // Green color for POV player and teammates
+    const newPlayerPositions: PlayerScreenPos[] = [];
+
     sortedPlayers.forEach(player => {
       if (!mapConfig) return;
       const pos = worldToMap(player.position.x, player.position.z, mapConfig, imgWidth, viewBoxWidth);
-      const color = getPlayerColor(player);
       const isLocal = player.type === PlayerType.LocalPlayer;
-      const radius = isLocal ? baseRadius * 1.5 : baseRadius;
+      const isTeammate = player.type === PlayerType.Teammate;
+      // POV is either the custom selected player, or LocalPlayer if none selected
+      const isPovPlayer = povPlayerName ? player.name === povPlayerName : isLocal;
+      // POV player and teammates get green color, others use normal color
+      const color = (isPovPlayer || isTeammate) ? povColor : getPlayerColor(player);
+      // POV player slightly larger, others use base size
+      const radius = isPovPlayer ? baseRadius * 1.3 : baseRadius;
+
+      // Track screen position for hover detection (for non-local players)
+      if (!isLocal) {
+        const playerScreenX = offsetX + pos.x * effectiveZoom;
+        const playerScreenY = offsetY + pos.y * effectiveZoom;
+        newPlayerPositions.push({
+          player,
+          screenX: playerScreenX,
+          screenY: playerScreenY,
+          radius: (radius + 2) * effectiveZoom, // Add some padding for easier hovering
+        });
+      }
 
       // Aimline
       if (showAimlines && player.isAlive) {
-        const aimLength = isLocal ? 15 : 10; // In image coordinate units
+        const aimLength = isPovPlayer ? 15 : 10; // In image coordinate units
         // Use rotation.x for horizontal aim direction (game uses different axis convention)
         const yaw = (player.rotation.x - 90) * (Math.PI / 180);
 
@@ -349,7 +511,7 @@ export function RadarCanvas() {
           pos.y + Math.sin(yaw) * aimLength
         );
         ctx.strokeStyle = color;
-        ctx.lineWidth = 0.4;
+        ctx.lineWidth = 0.25;
         ctx.globalAlpha = 0.8;
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -357,7 +519,7 @@ export function RadarCanvas() {
 
       // Player dot outline
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius + 0.3, 0, Math.PI * 2);
+      ctx.arc(pos.x, pos.y, radius + 0.15, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fill();
 
@@ -367,12 +529,12 @@ export function RadarCanvas() {
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Selection ring for local player
-      if (isLocal) {
+      // Selection ring for POV player only
+      if (isPovPlayer) {
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, radius + 1, 0, Math.PI * 2);
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 0.3;
+        ctx.arc(pos.x, pos.y, radius + 0.5, 0, Math.PI * 2);
+        ctx.strokeStyle = povColor;
+        ctx.lineWidth = 0.2;
         ctx.globalAlpha = 0.8;
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -421,14 +583,22 @@ export function RadarCanvas() {
 
     ctx.restore();
 
+    // Store player positions for hover detection
+    playerScreenPosRef.current = newPlayerPositions;
+
     // Draw compass
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
     ctx.fillText('N', canvas.width / 2, 20);
 
+    // Draw player tooltip if hovering
+    if (hoveredPlayer && !isDraggingRef.current) {
+      drawPlayerTooltip(ctx, hoveredPlayer, mousePos.x, mousePos.y, localPlayer);
+    }
+
     animationRef.current = requestAnimationFrame(render);
-  }, [mapId, mapConfig, players, loot, zoom, showMap, mapOpacity, showBots, showDeadPlayers, showPlayerNames, showAimlines, showHeightDiff, worldToMap, povPlayerName, lootFilter, lootColors]);
+  }, [mapId, mapConfig, players, loot, zoom, showMap, mapOpacity, showBots, showDeadPlayers, showPlayerNames, showAimlines, showHeightDiff, worldToMap, povPlayerName, lootFilter, lootColors, hoveredPlayer, mousePos]);
 
   // Start render loop
   useEffect(() => {
@@ -449,20 +619,48 @@ export function RadarCanvas() {
       isDraggingRef.current = true;
       lastPosRef.current = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
+      setHoveredPlayer(null); // Clear hover while dragging
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      if (!isDraggingRef.current) return;
-      const dx = e.clientX - lastPosRef.current.x;
-      const dy = e.clientY - lastPosRef.current.y;
-      panRef.current.x += dx;
-      panRef.current.y += dy;
-      lastPosRef.current = { x: e.clientX, y: e.clientY };
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Update mouse position for tooltip
+      setMousePos({ x, y });
+
+      if (isDraggingRef.current) {
+        const dx = e.clientX - lastPosRef.current.x;
+        const dy = e.clientY - lastPosRef.current.y;
+        panRef.current.x += dx;
+        panRef.current.y += dy;
+        lastPosRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
+
+      // Check for player hover
+      let foundPlayer: Player | null = null;
+      for (const playerPos of playerScreenPosRef.current) {
+        const dx = x - playerPos.screenX;
+        const dy = y - playerPos.screenY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= playerPos.radius * playerPos.radius) {
+          foundPlayer = playerPos.player;
+          break;
+        }
+      }
+      setHoveredPlayer(foundPlayer);
     };
 
     const onPointerUp = (e: PointerEvent) => {
       isDraggingRef.current = false;
       canvas.releasePointerCapture(e.pointerId);
+    };
+
+    const onPointerLeave = () => {
+      isDraggingRef.current = false;
+      setHoveredPlayer(null);
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -479,7 +677,7 @@ export function RadarCanvas() {
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointerleave', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('dblclick', onDoubleClick);
 
@@ -487,7 +685,7 @@ export function RadarCanvas() {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointerleave', onPointerUp);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('dblclick', onDoubleClick);
     };
@@ -498,7 +696,10 @@ export function RadarCanvas() {
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        style={{ touchAction: 'none', cursor: 'grab' }}
+        style={{
+          touchAction: 'none',
+          cursor: hoveredPlayer ? 'pointer' : isDraggingRef.current ? 'grabbing' : 'grab',
+        }}
       />
     </div>
   );

@@ -1,87 +1,39 @@
-import { useState } from 'react';
 import { useRadarStore } from '../../store/radarStore';
 import clsx from 'clsx';
 
 export function Header() {
-  const { connection, povPlayerName, setPovPlayerName, players } = useRadarStore();
-  const [povInput, setPovInput] = useState('');
+  const { connection } = useRadarStore();
 
-  const statusText = {
-    disconnected: 'Disconnected',
-    connecting: 'Connecting...',
-    waiting: 'Waiting for host',
-    connected: 'Connected',
+  const statusConfig = {
+    disconnected: { text: 'Disconnected', color: 'bg-radar-danger', pulse: false },
+    connecting: { text: 'Connecting...', color: 'bg-radar-warning', pulse: true },
+    waiting: { text: 'Waiting for host', color: 'bg-radar-warning', pulse: true },
+    connected: { text: 'Connected', color: 'bg-radar-success', pulse: false },
   }[connection.status];
-
-  const statusColor = {
-    disconnected: 'bg-red-500',
-    connecting: 'bg-yellow-500',
-    waiting: 'bg-yellow-500',
-    connected: 'bg-green-500',
-  }[connection.status];
-
-  const handleSwitchPov = () => {
-    const trimmed = povInput.trim();
-    if (!trimmed) {
-      // Empty input = reset to local player
-      setPovPlayerName(null);
-      return;
-    }
-    // Find player by name (case-insensitive partial match)
-    const found = players.find(p =>
-      p.name.toLowerCase().includes(trimmed.toLowerCase())
-    );
-    if (found) {
-      setPovPlayerName(found.name);
-    } else {
-      alert(`Player "${trimmed}" not found`);
-    }
-  };
-
-  const handleResetPov = () => {
-    setPovPlayerName(null);
-    setPovInput('');
-  };
 
   return (
-    <header className="h-12 bg-radar-panel border-b border-radar-border flex items-center justify-between px-4">
+    <header className="h-14 bg-radar-panel border-b border-radar-border flex items-center justify-between px-4">
+      {/* Branding */}
       <div className="flex items-center gap-3">
-        <img src={`${import.meta.env.BASE_URL}modal_branding.jpeg`} alt="prods-gamesense" className="h-8 rounded" />
-        <h1 className="text-radar-accent font-bold text-lg">prods-gamesense</h1>
-      </div>
-
-      {/* POV Switching */}
-      <div className="flex items-center gap-2">
-        <span className="text-gray-400 text-sm">POV:</span>
-        <input
-          type="text"
-          value={povInput}
-          onChange={(e) => setPovInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSwitchPov()}
-          placeholder={povPlayerName || 'Local Player'}
-          className="w-32 px-2 py-1 text-sm bg-radar-bg border border-radar-border rounded text-white placeholder-gray-500 focus:outline-none focus:border-radar-accent"
+        <img
+          src={`${import.meta.env.BASE_URL}modal_branding.jpeg`}
+          alt="prods-gamesense"
+          className="h-9 rounded-md shadow-lg"
         />
-        <button
-          onClick={handleSwitchPov}
-          className="px-2 py-1 text-sm bg-radar-accent text-white rounded hover:bg-blue-600 transition-colors"
-        >
-          Switch
-        </button>
-        {povPlayerName && (
-          <button
-            onClick={handleResetPov}
-            className="px-2 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-500 transition-colors"
-          >
-            Reset
-          </button>
-        )}
+        <div>
+          <h1 className="text-white font-bold text-base leading-tight">prods-gamesense</h1>
+          <p className="text-gray-500 text-xs">Web Radar Client</p>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 text-sm">
-        <div className={clsx('w-2 h-2 rounded-full', statusColor, {
-          'animate-pulse': connection.status === 'connecting' || connection.status === 'waiting',
-        })} />
-        <span className="text-gray-400">{statusText}</span>
+      {/* Connection Status */}
+      <div className="flex items-center gap-3 bg-radar-panel-light rounded-lg px-4 py-2">
+        <div className={clsx(
+          'w-2.5 h-2.5 rounded-full',
+          statusConfig.color,
+          statusConfig.pulse && 'animate-pulse'
+        )} />
+        <span className="text-gray-300 text-sm font-medium">{statusConfig.text}</span>
       </div>
     </header>
   );
