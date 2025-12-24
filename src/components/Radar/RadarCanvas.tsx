@@ -234,12 +234,15 @@ export function RadarCanvas() {
           const response = await fetch(url);
           const svgText = await response.text();
 
-          // Parse viewBox from SVG
+          // Parse viewBox from SVG - format is "minX minY width height"
           let viewBox = { width: 300, height: 300 };
           const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/);
           if (viewBoxMatch) {
-            const [, , , width, height] = viewBoxMatch[1].split(/\s+/).map(Number);
-            viewBox = { width, height };
+            const parts = viewBoxMatch[1].split(/\s+/).map(Number);
+            // viewBox has 4 values: minX, minY, width, height
+            if (parts.length >= 4) {
+              viewBox = { width: parts[2], height: parts[3] };
+            }
           }
 
           // Create image from SVG with explicit dimensions
@@ -562,6 +565,19 @@ export function RadarCanvas() {
         // Text fill
         ctx.fillStyle = '#ffffff';
         ctx.fillText(player.name, screenX, screenY - radius * effectiveZoom - 5);
+
+        // Player type label for human players (PMC/PlayerScav) - drawn below the name
+        if (player.type === PlayerType.PMC || player.type === PlayerType.PlayerScav) {
+          const typeLabel = player.type === PlayerType.PMC ? '[PMC]' : '[PlayerScav]';
+          const nameY = screenY - radius * effectiveZoom - 5;
+          ctx.font = '8px Arial';
+          ctx.textBaseline = 'top';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 2;
+          ctx.strokeText(typeLabel, screenX, nameY + 1);
+          ctx.fillStyle = player.type === PlayerType.PMC ? '#f59e0b' : '#a78bfa';
+          ctx.fillText(typeLabel, screenX, nameY + 1);
+        }
 
         // Height difference
         if (showHeightDiff && localPlayer && player !== localPlayer) {
