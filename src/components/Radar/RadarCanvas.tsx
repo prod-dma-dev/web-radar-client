@@ -166,6 +166,9 @@ export function RadarCanvas() {
     maxHeight: number | undefined;
   }>>([]);
   const currentMapRef = useRef<string>('');
+  // Offscreen canvas for pre-compositing map layers
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cachedLayersRef = useRef<string>(''); // Track which layers are cached
 
   const [mapConfig, setMapConfig] = useState<MapConfig | null>(null);
 
@@ -357,26 +360,54 @@ export function RadarCanvas() {
     ctx.translate(offsetX, offsetY);
     ctx.scale(effectiveZoom, effectiveZoom);
 
-    // Draw all visible map layers (base layer first, then floor-specific layers on top)
+    // Draw all visible map layers using offscreen canvas cache
     if (showMap && visibleLayers.length > 0 && mapConfig) {
-      // Disable image smoothing for better performance
-      ctx.imageSmoothingEnabled = false;
+      // Create cache key from visible layer indices
+      const cacheKey = visibleLayers.map(l =>
+        `${l.minHeight ?? 'base'}-${l.maxHeight ?? 'base'}`
+      ).join('|');
 
-      // Sort layers: base layers first, then by minHeight ascending
-      const sortedLayers = [...visibleLayers].sort((a, b) => {
-        const aIsBase = a.minHeight === undefined && a.maxHeight === undefined;
-        const bIsBase = b.minHeight === undefined && b.maxHeight === undefined;
-        if (aIsBase && !bIsBase) return -1;
-        if (!aIsBase && bIsBase) return 1;
-        return (a.minHeight ?? -Infinity) - (b.minHeight ?? -Infinity);
-      });
+      // Check if we need to re-composite layers
+      if (cacheKey !== cachedLayersRef.current || !offscreenCanvasRef.current) {
+        // Sort layers: base layers first, then by minHeight ascending
+        const sortedLayers = [...visibleLayers].sort((a, b) => {
+          const aIsBase = a.minHeight === undefined && a.maxHeight === undefined;
+          const bIsBase = b.minHeight === undefined && b.maxHeight === undefined;
+          if (aIsBase && !bIsBase) return -1;
+          if (!aIsBase && bIsBase) return 1;
+          return (a.minHeight ?? -Infinity) - (b.minHeight ?? -Infinity);
+        });
 
-      // Only draw the top-most layer for performance (skip base layer if we have a floor layer)
-      const topLayer = sortedLayers[sortedLayers.length - 1];
-      ctx.globalAlpha = mapOpacity;
-      ctx.drawImage(topLayer.image, 0, 0);
-      ctx.globalAlpha = 1;
-      ctx.imageSmoothingEnabled = true;
+        // Create/resize offscreen canvas
+        const firstLayer = sortedLayers[0];
+        if (!offscreenCanvasRef.current) {
+          offscreenCanvasRef.current = document.createElement('canvas');
+        }
+        offscreenCanvasRef.current.width = firstLayer.image.width;
+        offscreenCanvasRef.current.height = firstLayer.image.height;
+
+        // Composite layers to offscreen canvas
+        const offCtx = offscreenCanvasRef.current.getContext('2d');
+        if (offCtx) {
+          offCtx.clearRect(0, 0, offscreenCanvasRef.current.width, offscreenCanvasRef.current.height);
+          sortedLayers.forEach((layer, index) => {
+            const isTopLayer = index === sortedLayers.length - 1;
+            offCtx.globalAlpha = isTopLayer ? 1 : 0.5;
+            offCtx.drawImage(layer.image, 0, 0);
+          });
+          offCtx.globalAlpha = 1;
+        }
+        cachedLayersRef.current = cacheKey;
+      }
+
+      // Draw cached composite (single drawImage call)
+      if (offscreenCanvasRef.current) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = mapOpacity;
+        ctx.drawImage(offscreenCanvasRef.current, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.imageSmoothingEnabled = true;
+      }
     }
 
     // Draw grid if no map
