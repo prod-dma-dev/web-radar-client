@@ -359,6 +359,9 @@ export function RadarCanvas() {
 
     // Draw all visible map layers (base layer first, then floor-specific layers on top)
     if (showMap && visibleLayers.length > 0 && mapConfig) {
+      // Disable image smoothing for better performance
+      ctx.imageSmoothingEnabled = false;
+
       // Sort layers: base layers first, then by minHeight ascending
       const sortedLayers = [...visibleLayers].sort((a, b) => {
         const aIsBase = a.minHeight === undefined && a.maxHeight === undefined;
@@ -368,14 +371,12 @@ export function RadarCanvas() {
         return (a.minHeight ?? -Infinity) - (b.minHeight ?? -Infinity);
       });
 
-      // Draw each visible layer
-      sortedLayers.forEach((layer, index) => {
-        const isTopLayer = index === sortedLayers.length - 1;
-        // Dim lower layers slightly (like C# radar does)
-        ctx.globalAlpha = isTopLayer ? mapOpacity : mapOpacity * 0.5;
-        ctx.drawImage(layer.image, 0, 0);
-      });
+      // Only draw the top-most layer for performance (skip base layer if we have a floor layer)
+      const topLayer = sortedLayers[sortedLayers.length - 1];
+      ctx.globalAlpha = mapOpacity;
+      ctx.drawImage(topLayer.image, 0, 0);
       ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = true;
     }
 
     // Draw grid if no map
