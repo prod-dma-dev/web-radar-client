@@ -130,8 +130,10 @@ export const useRadarStore = create<RadarState & RadarActions>()(
           loot,
           // Only update itemDatabase if provided and not empty
           itemDatabase: itemDatabase && itemDatabase.length > 0 ? itemDatabase : state.itemDatabase,
-          // Only update extracts if provided
-          extracts: extracts && extracts.length > 0 ? extracts : state.extracts,
+          // Only update extracts when map changes or first received (extracts are static per map)
+          extracts: (extracts && extracts.length > 0 && (state.mapId !== mapId || state.extracts.length === 0))
+            ? extracts
+            : state.extracts,
         })),
 
       setItemDatabase: (itemDatabase) => set({ itemDatabase }),
